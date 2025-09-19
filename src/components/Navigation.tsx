@@ -1,14 +1,17 @@
 import React, { useState } from 'react'
-import { 
-  BarChart3, 
-  GraduationCap, 
-  Building2, 
-  Users, 
-  DollarSign, 
+import {
+  BarChart3,
+  GraduationCap,
+  Building2,
+  Users,
+  DollarSign,
   MapPin,
   Menu,
   X
 } from 'lucide-react'
+
+// Import the logo as a module for better reliability
+import logo from '../../logo.png'
 
 interface NavigationProps {
   currentPage?: string
@@ -40,7 +43,7 @@ export function Navigation({ currentPage = 'overview', onNavigate }: NavigationP
             <div className="flex-shrink-0 flex items-center">
               <img
                 className="h-8 w-auto"
-                src="/logo.png"
+                src={logo}
                 alt="EduAnalytics Dashboard Logo"
               />
               <span className="ml-3 text-xl font-bold text-green-700">
