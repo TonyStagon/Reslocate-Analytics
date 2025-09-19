@@ -40,7 +40,7 @@ export function Navigation({ currentPage = 'overview', onNavigate }: NavigationP
             <div className="flex-shrink-0 flex items-center">
               <img
                 className="h-8 w-auto"
-                src="/logo.png.webp"
+                src="/logo.webp"
                 alt="EduAnalytics Dashboard Logo"
               />
               <span className="ml-3 text-xl font-bold text-green-700">
