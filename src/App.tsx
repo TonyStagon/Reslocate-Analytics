@@ -7,6 +7,10 @@ import { TVET } from './pages/TVET'
 import { Matches } from './pages/Matches'
 import { Funding } from './pages/Funding'
 import { Institutions } from './pages/Institutions'
+import { SessionHealth } from './pages/SessionHealth'
+import { Engagement } from './pages/Engagement'
+import { UserJourney } from './pages/UserJourney'
+import { FeatureAdoption } from './pages/FeatureAdoption'
 
 function App() {
   const [currentPage, setCurrentPage] = useState('overview')
@@ -25,15 +29,23 @@ function App() {
         return <Funding />
       case 'institutions':
         return <Institutions />
+      case 'session-health':
+        return <SessionHealth />
+      case 'engagement':
+        return <Engagement />
+      case 'user-journey':
+        return <UserJourney />
+      case 'feature-adoption':
+        return <FeatureAdoption />
       default:
         return <Overview />
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-green-50">
       <Navigation currentPage={currentPage} onNavigate={setCurrentPage} />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-500">
         {renderCurrentPage()}
       </main>
     </div>
