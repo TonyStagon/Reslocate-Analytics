@@ -11,7 +11,9 @@ import {
   GitBranch,
   Target,
   Menu,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 
 interface NavigationProps {
@@ -21,6 +23,10 @@ interface NavigationProps {
 
 export function Navigation({ currentPage = 'overview', onNavigate }: NavigationProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [carouselIndex, setCarouselIndex] = useState(0)
+  
+  // Number of items to show in the carousel at once
+  const itemsPerView = 5
 
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
@@ -39,6 +45,16 @@ export function Navigation({ currentPage = 'overview', onNavigate }: NavigationP
     onNavigate?.(page)
     setMobileMenuOpen(false)
   }
+
+  const navigateCarousel = (direction: 'prev' | 'next') => {
+    if (direction === 'next' && carouselIndex + itemsPerView < menuItems.length) {
+      setCarouselIndex(carouselIndex + 1)
+    } else if (direction === 'prev' && carouselIndex > 0) {
+      setCarouselIndex(carouselIndex - 1)
+    }
+  }
+
+  const visibleItems = menuItems.slice(carouselIndex, carouselIndex + itemsPerView)
 
   return (
     <nav className="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-50">
@@ -63,25 +79,69 @@ export function Navigation({ currentPage = 'overview', onNavigate }: NavigationP
             </div>
           </div>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation Carousel */}
           <div className="hidden md:flex items-center space-x-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavigation(item.id)}
-                  className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
-                    currentPage === item.id
-                      ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
-                      : 'text-gray-600 hover:text-green-700 hover:bg-green-50 hover:shadow-md'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 mr-2" />
-                  {item.label}
-                </button>
-              )
-            })}
+            {/* Left navigation arrow */}
+            <button
+              onClick={() => navigateCarousel('prev')}
+              className={`p-2 rounded-lg transition-all duration-200 ${
+                carouselIndex > 0
+                  ? 'text-gray-600 hover:text-green-700 hover:bg-green-50'
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+              disabled={carouselIndex <= 0}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Carousel items */}
+            <div className="flex items-center space-x-2">
+              {visibleItems.map((item) => {
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavigation(item.id)}
+                    className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
+                      currentPage === item.id
+                        ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
+                        : 'text-gray-600 hover:text-green-700 hover:bg-green-50 hover:shadow-md'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 mr-2" />
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Right navigation arrow */}
+            <button
+              onClick={() => navigateCarousel('next')}
+              className={`p-2 rounded-lg transition-all duration-200 ${
+                carouselIndex + itemsPerView < menuItems.length
+                  ? 'text-gray-600 hover:text-green-700 hover:bg-green-50'
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+              disabled={carouselIndex + itemsPerView >= menuItems.length}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Page indicator dots */}
+          <div className="hidden md:flex items-center space-x-1 ml-4">
+            {Array.from({ length: Math.ceil(menuItems.length / itemsPerView) }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => setCarouselIndex(i * itemsPerView)}
+                className={`w-2 h-2 rounded-full transition-all duration-200 ${
+                  Math.floor(carouselIndex / itemsPerView) === i
+                    ? 'bg-green-600 scale-125'
+                    : 'bg-gray-300 hover:bg-gray-400'
+                }`}
+              />
+            ))}
           </div>
 
           {/* Mobile menu button */}
