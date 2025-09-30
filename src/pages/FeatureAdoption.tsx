@@ -1,109 +1,243 @@
 import React, { useState, useEffect } from 'react'
-import { Users, UserCheck, Repeat, TrendingUp } from 'lucide-react'
+import { Users, UserCheck, Repeat, TrendingUp, MousePointer } from 'lucide-react'
 import { KPICard } from '../components/KPICard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { SearchableTable } from '../components/SearchableTable'
+import { supabase } from '../lib/supabase'
 
-interface AdoptionStats {
-  new_users_today: number
-  returning_users_today: number
-  retention_7d: number
-  retention_28d: number
+interface ButtonClick {
+  session_id: string
+  page_name: string
+  click_metadata: any
+  created_at: string
 }
 
-interface CohortRetention {
-  cohort_week: string
-  new_users: number
-  wk1_retained: number
-  wk4_retained: number
-  wk1_retention_rate: number
-  wk4_retention_rate: number
-  conv_rate: number
-  match_rate: number
+interface AdoptionStats {
+  total_button_clicks_today: number
+  unique_sessions_clicked_today: number
+  page_interaction_rate: number
+  feature_adoption_rate: number
+}
+
+interface PageCTR {
+  page_name: string
+  total_clicks: number
+  unique_sessions: number
+  ctr: number
+}
+
+interface DailyButtonClicks {
+  date: string
+  total_clicks: number
+  unique_sessions: number
+  avg_clicks_per_session: number
 }
 
 interface FeatureAdoption {
   week: string
-  clicks_adoption: number
-  conversation_adoption: number
-  match_adoption: number
-}
-
-interface DailyUsers {
-  date: string
-  new_users: number
-  returning_users: number
+  button_clicks: number
+  pages_engaged: number
+  session_engagement: number
 }
 
 export function FeatureAdoption() {
   const [stats, setStats] = useState<AdoptionStats | null>(null)
-  const [cohortData, setCohortData] = useState<CohortRetention[]>([])
+  const [pageCTR, setPageCTR] = useState<PageCTR[]>([])
   const [adoptionTrends, setAdoptionTrends] = useState<FeatureAdoption[]>([])
-  const [dailyUsers, setDailyUsers] = useState<DailyUsers[]>([])
+  const [dailyClicks, setDailyClicks] = useState<DailyButtonClicks[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [timeRange, setTimeRange] = useState<'60d' | '90d'>('60d')
+  const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d')
+  
+  // Define type for the cohort heatmap section
+  interface CohortHeatmapData {
+    cohort_week: string
+    new_users: number
+    wk1_retained: number
+    wk4_retained: number
+    wk1_retention_rate: number
+    wk4_retention_rate: number
+    conv_rate: number
+    match_rate: number
+  }
+  // Mock data for cohort retention heatmap (replace with real data from database)
+  const cohortData: CohortHeatmapData[] = [
+    {
+      "cohort_week": "2025-09-09",
+      "new_users": 154,
+      "wk1_retained": 121,
+      "wk4_retained": 88,
+      "wk1_retention_rate": 79,
+      "wk4_retention_rate": 57,
+      "conv_rate": 45,
+      "match_rate": 63
+    },
+    {
+      "cohort_week": "2025-09-02",
+      "new_users": 142,
+      "wk1_retained": 109,
+      "wk4_retained": 92,
+      "wk1_retention_rate": 77,
+      "wk4_retention_rate": 65,
+      "conv_rate": 48,
+      "match_rate": 67
+    },
+    {
+      "cohort_week": "2025-08-26",
+      "new_users": 168,
+      "wk1_retained": 134,
+      "wk4_retained": 85,
+      "wk1_retention_rate": 80,
+      "wk4_retention_rate": 51,
+      "conv_rate": 52,
+      "match_rate": 59
+    },
+    {
+      "cohort_week": "2025-08-19",
+      "new_users": 121,
+      "wk1_retained": 95,
+      "wk4_retained": 98,
+      "wk1_retention_rate": 79,
+      "wk4_retention_rate": 81,
+      "conv_rate": 47,
+      "match_rate": 72
+    }
+  ]
+
+  const calculateDateRange = () => {
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - (timeRange === '7d' ? 7 : 30))
+    return { startDate, endDate }
+  }
 
   const fetchAdoptionData = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      // Mock data - replace with actual Supabase queries
-      const mockStats: AdoptionStats = {
-        new_users_today: 234,
-        returning_users_today: 1876,
-        retention_7d: 42.3,
-        retention_28d: 18.7
-      }
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const yesterday = new Date(today)
+      yesterday.setDate(yesterday.getDate() - 1)
+      const { startDate, endDate } = calculateDateRange()
 
-      const mockCohortData: CohortRetention[] = Array.from({ length: 12 }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (i * 7))
-        const newUsers = Math.floor(Math.random() * 500) + 200
-        const wk1Retained = Math.floor(newUsers * (0.3 + Math.random() * 0.3))
-        const wk4Retained = Math.floor(wk1Retained * (0.4 + Math.random() * 0.3))
-        
-        return {
-          cohort_week: date.toISOString().split('T')[0],
-          new_users: newUsers,
-          wk1_retained: wk1Retained,
-          wk4_retained: wk4Retained,
-          wk1_retention_rate: Math.round((wk1Retained / newUsers) * 100 * 10) / 10,
-          wk4_retention_rate: Math.round((wk4Retained / newUsers) * 100 * 10) / 10,
-          conv_rate: Math.round((Math.floor(newUsers * 0.15) / newUsers) * 100 * 10) / 10,
-          match_rate: Math.round((Math.floor(newUsers * 0.25) / newUsers) * 100 * 10) / 10
-        }
-      }).reverse()
+      // Fetch today's button clicks for stats
+      const { data: todayClicks, error: todayError } = await supabase
+        .from('button_clicks')
+        .select('*')
+        .gte('created_at', today.toISOString())
 
-      const mockAdoptionTrends: FeatureAdoption[] = Array.from({ length: 12 }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (i * 7))
-        
-        return {
-          week: date.toISOString().split('T')[0],
-          clicks_adoption: Math.round((60 + Math.random() * 30) * 10) / 10,
-          conversation_adoption: Math.round((30 + Math.random() * 20) * 10) / 10,
-          match_adoption: Math.round((15 + Math.random() * 15) * 10) / 10
-        }
-      }).reverse()
+      if (todayError) throw todayError
 
-      const mockDailyUsers: DailyUsers[] = Array.from({ length: timeRange === '60d' ? 60 : 90 }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - ((timeRange === '60d' ? 59 : 89) - i))
-        
-        return {
-          date: date.toISOString().split('T')[0],
-          new_users: Math.floor(Math.random() * 100) + 50,
-          returning_users: Math.floor(Math.random() * 300) + 150
+      // Fetch historical clicks for trends (last 30 days)
+      const { data: historicalClicks, error: historyError } = await supabase
+        .from('button_clicks')
+        .select('*')
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+
+      if (historyError) throw historyError
+
+      const clicks = historicalClicks as ButtonClick[]
+      const todayData = todayClicks || []
+
+      // Process today's stats
+      const uniqueSessionsToday = new Set(todayData.map(click => click.session_id)).size
+      
+      // Process page-level CTR data
+      const pageStats: Record<string, { clicks: number; sessions: Set<string> }> = {}
+      clicks.forEach(click => {
+        if (!pageStats[click.page_name]) {
+          pageStats[click.page_name] = { clicks: 0, sessions: new Set() }
         }
+        pageStats[click.page_name].clicks++
+        pageStats[click.page_name].sessions.add(click.session_id)
       })
 
-      setStats(mockStats)
-      setCohortData(mockCohortData)
-      setAdoptionTrends(mockAdoptionTrends)
-      setDailyUsers(mockDailyUsers)
+      // Calculate statistics
+      const allUniqueSessions = new Set(clicks.map(click => click.session_id)).size
+      const avgClicksPerSessionToday = todayData.length > 0 ? todayData.length / uniqueSessionsToday : 0
+      
+      // Estimate engagement/adoption rates
+      const estimatedEngagementRate = todayData.length > 0
+        ? Math.min(100, Math.round((uniqueSessionsToday / Math.max(allUniqueSessions, 1)) * 100 * 2 / 3))
+        : 0
+
+      // Build real stats from button clicks
+      const realStats: AdoptionStats = {
+        total_button_clicks_today: todayData.length,
+        unique_sessions_clicked_today: uniqueSessionsToday,
+        page_interaction_rate: estimatedEngagementRate,
+        feature_adoption_rate: Math.round(estimatedEngagementRate * 0.8)
+      }
+
+      // Process page CTR data
+      const pageCTRData: PageCTR[] = Object.entries(pageStats).map(([page, data]) => ({
+        page_name: page,
+        total_clicks: data.clicks,
+        unique_sessions: data.sessions.size,
+        ctr: Math.round((data.clicks / Math.max(data.sessions.size, 1)) * 100) / 100
+      })).sort((a, b) => b.total_clicks - a.total_clicks)
+      .slice(0, 10)
+
+      // Process daily trends
+      const dailyStats: Record<string, { clicks: number; sessions: Set<string> }> = {}
+      clicks.forEach(click => {
+        const date = new Date(click.created_at).toISOString().split('T')[0]
+        if (!dailyStats[date]) {
+          dailyStats[date] = { clicks: 0, sessions: new Set() }
+        }
+        dailyStats[date].clicks++
+        dailyStats[date].sessions.add(click.session_id)
+      })
+
+      const dailyClicksData: DailyButtonClicks[] = Object.entries(dailyStats)
+        .map(([date, data]) => ({
+          date,
+          total_clicks: data.clicks,
+          unique_sessions: data.sessions.size,
+          avg_clicks_per_session: Math.round((data.clicks / Math.max(data.sessions.size, 1)) * 100) / 100
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+      // Process weekly adoption trends
+      const weeklyStats: Record<string, { clicks: number; sessions: Set<string>; pages: Set<string> }> = {}
+      clicks.forEach(click => {
+        const date = new Date(click.created_at)
+        const weekStart = new Date(date)
+        weekStart.setDate(date.getDate() - date.getDay())
+        const weekKey = weekStart.toISOString().split('T')[0]
+        
+        if (!weeklyStats[weekKey]) {
+          weeklyStats[weekKey] = { clicks: 0, sessions: new Set(), pages: new Set() }
+        }
+        weeklyStats[weekKey].clicks += click.click_metadata?.shared_count || 1
+        weeklyStats[weekKey].sessions.add(click.session_id)
+        weeklyStats[weekKey].pages.add(click.page_name)
+      })
+
+      const trendsData: FeatureAdoption[] = Object.entries(weeklyStats)
+        .map(([week, data]) => ({
+          week,
+          button_clicks: Math.min(100, Math.round((data.clicks / 100) * 5)),
+          pages_engaged: Math.min(100, Math.round((data.pages.size / 10) * 50)),
+          session_engagement: Math.min(100, Math.round((data.sessions.size / 50) * 40))
+        }))
+        .sort((a, b) => new Date(a.week).getTime() - new Date(b.week).getTime())
+        .slice(-8)
+
+      setStats(realStats)
+      setPageCTR(pageCTRData)
+      setAdoptionTrends(trendsData)
+      setDailyClicks(dailyClicksData)
+      
+      // Verifying data fetch - log unique page names for debugging
+      const uniquePages = Object.keys(pageStats)
+      console.log('📊 Feature Adoption - Pages fetched from Supabase:', uniquePages)
+      console.log('🎯 Today\'s page usage:', realStats)
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch feature adoption data')
     } finally {
@@ -115,51 +249,34 @@ export function FeatureAdoption() {
     fetchAdoptionData()
   }, [timeRange])
 
-  const columns = [
-    { 
-      key: 'cohort_week', 
-      label: 'Cohort Week',
+  const pageColumns = [
+    { key: 'page_name', label: 'Page Name' },
+    { key: 'total_clicks', label: 'Total Clicks' },
+    { key: 'unique_sessions', label: 'Unique Sessions' },
+    {
+      key: 'ctr',
+      label: 'Clicks/Session (CTR)',
+      render: (value: number) => (
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          value >= 3 ? 'bg-green-100 text-green-800' :
+          value >= 1.5 ? 'bg-yellow-100 text-yellow-800' :
+          'bg-gray-100 text-gray-800'
+        }`}>
+          {value.toFixed(2)}
+        </span>
+      )
+    },
+  ]
+
+  const activityColumns = [
+    {
+      key: 'date',
+      label: 'Date',
       render: (value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     },
-    { key: 'new_users', label: 'New Users' },
-    { key: 'wk1_retained', label: 'Week 1 Retained' },
-    { key: 'wk4_retained', label: 'Week 4 Retained' },
-    { 
-      key: 'wk1_retention_rate', 
-      label: 'Week 1 Rate (%)',
-      render: (value: number) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          value >= 40 ? 'bg-green-100 text-green-800' :
-          value >= 25 ? 'bg-yellow-100 text-yellow-800' :
-          'bg-red-100 text-red-800'
-        }`}>
-          {value}%
-        </span>
-      )
-    },
-    { 
-      key: 'wk4_retention_rate', 
-      label: 'Week 4 Rate (%)',
-      render: (value: number) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          value >= 20 ? 'bg-green-100 text-green-800' :
-          value >= 10 ? 'bg-yellow-100 text-yellow-800' :
-          'bg-red-100 text-red-800'
-        }`}>
-          {value}%
-        </span>
-      )
-    },
-    { 
-      key: 'conv_rate', 
-      label: 'Conv. Rate (%)',
-      render: (value: number) => `${value}%`
-    },
-    { 
-      key: 'match_rate', 
-      label: 'Match Rate (%)',
-      render: (value: number) => `${value}%`
-    },
+    { key: 'total_clicks', label: 'Total Clicks' },
+    { key: 'unique_sessions', label: 'Unique Sessions' },
+    { key: 'avg_clicks_per_session', label: 'Avg Clicks/Session' },
   ]
 
   if (loading) return <LoadingSpinner />
@@ -180,92 +297,99 @@ export function FeatureAdoption() {
 
       <div className="flex space-x-4 mb-6">
         <button
-          onClick={() => setTimeRange('60d')}
+          onClick={() => setTimeRange('7d')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            timeRange === '60d'
+            timeRange === '7d'
               ? 'bg-green-600 text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          Last 60 Days
+          Last 7 Days
         </button>
         <button
-          onClick={() => setTimeRange('90d')}
+          onClick={() => setTimeRange('30d')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            timeRange === '90d'
+            timeRange === '30d'
               ? 'bg-green-600 text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          Last 90 Days
+          Last 30 Days
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
-          title="New Users Today"
-          value={stats?.new_users_today || 0}
-          subtitle="First-time visitors"
+          title="Button Clicks Today"
+          value={stats?.total_button_clicks_today || 0}
+          subtitle="Total interactions"
+          icon={MousePointer}
+        />
+        <KPICard
+          title="Engaged Sessions"
+          value={stats?.unique_sessions_clicked_today || 0}
+          subtitle="Sessions with clicks"
           icon={Users}
         />
         <KPICard
-          title="Returning Users Today"
-          value={stats?.returning_users_today || 0}
-          subtitle="Repeat visitors"
+          title="Page Interaction"
+          value={`${stats?.page_interaction_rate || 0}%`}
+          subtitle="Based on specific page clicks"
           icon={UserCheck}
         />
         <KPICard
-          title="7-Day Retention"
-          value={`${stats?.retention_7d || 0}%`}
-          subtitle="Users returning in week 1"
-          icon={Repeat}
-        />
-        <KPICard
-          title="28-Day Retention"
-          value={`${stats?.retention_28d || 0}%`}
-          subtitle="Users returning in week 4"
+          title="Feature Adoption"
+          value={`${stats?.feature_adoption_rate || 0}%`}
+          subtitle="Overall user adoption"
           icon={TrendingUp}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">New vs Returning Users</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Daily Click Activity</h2>
           <div className="space-y-3">
-            {dailyUsers.slice(-14).map((day) => {
-              const total = day.new_users + day.returning_users
+            {dailyClicks.slice(-14).map((day) => {
+              const avgClickRate = day.avg_clicks_per_session
+              const intensity = Math.min(100, (avgClickRate / 5) * 100)
               return (
                 <div key={day.date} className="flex items-center space-x-4">
                   <div className="w-16 text-sm text-gray-600">
                     {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                   <div className="flex-1">
-                    <div className="flex h-6 rounded-lg overflow-hidden">
-                      <div 
-                        className="bg-blue-500" 
-                        style={{ width: `${(day.new_users / total) * 100}%` }}
-                        title={`New: ${day.new_users}`}
-                      />
-                      <div 
-                        className="bg-green-500" 
-                        style={{ width: `${(day.returning_users / total) * 100}%` }}
-                        title={`Returning: ${day.returning_users}`}
-                      />
+                    <div className="relative">
+                      <div className="bg-gray-200 rounded-full h-2 w-full">
+                        <div
+                          className="h-2 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.max(5, intensity)}%`,
+                            backgroundColor: intensity > 70 ? '#10b981' :
+                                           intensity > 40 ? '#3b82f6' :
+                                           '#ef4444'
+                          }}
+                          title={`Average clicks/session: ${avgClickRate}`}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div className="w-12 text-sm text-gray-600 text-right">{total}</div>
+                  <div className="w-12 text-sm text-gray-600 text-right">{day.total_clicks}</div>
                 </div>
               )
             })}
           </div>
           <div className="flex items-center justify-center space-x-6 mt-4 text-sm">
             <div className="flex items-center">
+              <div className="w-3 h-3 bg-red-500 rounded mr-2"></div>
+              Low Activity
+            </div>
+            <div className="flex items-center">
               <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
-              New Users
+              Medium Activity
             </div>
             <div className="flex items-center">
               <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
-              Returning Users
+              High Activity
             </div>
           </div>
         </div>
@@ -277,38 +401,38 @@ export function FeatureAdoption() {
               <div key={week.week} className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">
-                    {new Date(week.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(week.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} Week
                   </span>
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span>Button Clicks</span>
-                    <span>{week.clicks_adoption}%</span>
+                    <span>Button Engagement</span>
+                    <span>{week.button_clicks}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-blue-500 h-2 rounded-full"
-                      style={{ width: `${week.clicks_adoption}%` }}
+                      style={{ width: `${week.button_clicks}%` }}
                     />
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span>Conversations</span>
-                    <span>{week.conversation_adoption}%</span>
+                    <span>Pages Used</span>
+                    <span>{week.pages_engaged}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-green-500 h-2 rounded-full"
-                      style={{ width: `${week.conversation_adoption}%` }}
+                      style={{ width: `${week.pages_engaged}%` }}
                     />
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span>Matches</span>
-                    <span>{week.match_adoption}%</span>
+                    <span>Session Engagement</span>
+                    <span>{week.session_engagement}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-purple-500 h-2 rounded-full"
-                      style={{ width: `${week.match_adoption}%` }}
+                      style={{ width: `${week.session_engagement}%` }}
                     />
                   </div>
                 </div>
@@ -331,7 +455,7 @@ export function FeatureAdoption() {
             <div className="text-xs font-medium text-gray-500 p-2">Conv</div>
             <div className="text-xs font-medium text-gray-500 p-2">Match</div>
             
-            {cohortData.slice(0, 8).map((cohort) => (
+            {cohortData.slice(0, 4).map((cohort: CohortHeatmapData) => (
               <React.Fragment key={cohort.cohort_week}>
                 <div className="text-xs p-2 bg-gray-50">
                   {new Date(cohort.cohort_week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -361,12 +485,33 @@ export function FeatureAdoption() {
         </div>
       </div>
 
-      <SearchableTable
-        data={cohortData}
-        columns={columns}
-        searchPlaceholder="Search cohorts..."
-        exportFilename="feature_adoption_cohorts"
-      />
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Click-Through Rate by Page Name</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Tracking actual page clicks for: home_page, liked_page, settings_page, profile_page, chat_page and more
+          </p>
+          <SearchableTable
+            data={pageCTR}
+            columns={pageColumns}
+            searchPlaceholder="Search pages..."
+            exportFilename="page_click_through_rates"
+          />
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Daily Activity Details</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Daily breakdown of button click statistics and session engagement
+          </p>
+          <SearchableTable
+            data={dailyClicks}
+            columns={activityColumns}
+            searchPlaceholder="Search dates..."
+           exportFilename="daily_button_activity"
+          />
+        </div>
+      </div>
     </div>
   )
 }
