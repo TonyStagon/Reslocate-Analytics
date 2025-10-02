@@ -4,6 +4,7 @@ import { KPICard } from '../components/KPICard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { supabase } from '../lib/supabase'
+import { safeNumberParse } from '../utils/dataConsistency'
 
 interface OverviewStats {
   total_users: number
@@ -41,9 +42,20 @@ export function Overview() {
 
       if (data) {
         const totalUsers = data.length
-        const pctGe50 = Math.round((data.filter(row => row.average >= 50).length / totalUsers) * 100 * 10) / 10
-        const pctGe70 = Math.round((data.filter(row => row.average >= 70).length / totalUsers) * 100 * 10) / 10
-        const pctGe80 = Math.round((data.filter(row => row.average >= 80).length / totalUsers) * 100 * 10) / 10
+        // Improved precision calculation using safeNumberParse for boundary handling
+        const studentsAvg50Plus = data.filter(row => safeNumberParse(row.average, 0) >= 50).length
+        const studentsAvg70Plus = data.filter(row => safeNumberParse(row.average, 0) >= 70).length
+        const studentsAvg80Plus = data.filter(row => safeNumberParse(row.average, 0) >= 80).length
+        
+        // Maintain precision to one decimal place for percentages
+        const precisePct = (count: number, total: number): number => {
+          const rawPct = total > 0 ? (count / total) * 100 : 0
+          return Math.round(rawPct * 10) / 10  // One decimal place
+        }
+        
+        const pctGe50 = precisePct(studentsAvg50Plus, totalUsers)
+        const pctGe70 = precisePct(studentsAvg70Plus, totalUsers)
+        const pctGe80 = precisePct(studentsAvg80Plus, totalUsers)
 
         setStats({
           total_users: totalUsers,

@@ -47,14 +47,34 @@ export function Navigation({ currentPage = 'overview', onNavigate }: NavigationP
   }
 
   const navigateCarousel = (direction: 'prev' | 'next') => {
-    if (direction === 'next' && carouselIndex + itemsPerView < menuItems.length) {
-      setCarouselIndex(carouselIndex + 1)
-    } else if (direction === 'prev' && carouselIndex > 0) {
-      setCarouselIndex(carouselIndex - 1)
+    const menuLength = menuItems.length
+    
+    if (direction === 'next') {
+      setCarouselIndex((carouselIndex + 1) % menuLength)
+    } else {
+      setCarouselIndex((carouselIndex - 1 + menuLength) % menuLength)
     }
   }
 
-  const visibleItems = menuItems.slice(carouselIndex, carouselIndex + itemsPerView)
+  const getVisibleItems = () => {
+    const totalItems = menuItems.length
+    const start = carouselIndex
+    let end = start + itemsPerView
+    
+    // Handle the wrap-around case when we reach the end
+    if (end <= totalItems) {
+      return menuItems.slice(start, end)
+    } else {
+      // Calculate how many items we need from the beginning
+      const wrapCount = end - totalItems
+      return [
+        ...menuItems.slice(start, totalItems),
+        ...menuItems.slice(0, wrapCount)
+      ]
+    }
+  }
+
+  const visibleItems = getVisibleItems()
 
   return (
     <nav className="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-50">
@@ -81,67 +101,43 @@ export function Navigation({ currentPage = 'overview', onNavigate }: NavigationP
 
           {/* Desktop Navigation Carousel */}
           <div className="hidden md:flex items-center space-x-2">
-            {/* Left navigation arrow */}
+            {/* Left navigation arrow - fixed position */}
             <button
               onClick={() => navigateCarousel('prev')}
-              className={`p-2 rounded-lg transition-all duration-200 ${
-                carouselIndex > 0
-                  ? 'text-gray-600 hover:text-green-700 hover:bg-green-50'
-                  : 'text-gray-300 cursor-not-allowed'
-              }`}
-              disabled={carouselIndex <= 0}
+              className="p-2 rounded-lg transition-all duration-200 text-gray-600 hover:text-green-700 hover:bg-green-50 flex-shrink-0 w-10 h-10 flex items-center justify-center"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            {/* Carousel items */}
-            <div className="flex items-center space-x-2">
+            {/* Fixed width container for navigation items */}
+            <div className="flex items-center space-x-2 min-w-[42rem] justify-center flex-shrink-0">
               {visibleItems.map((item) => {
                 const Icon = item.icon
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleNavigation(item.id)}
-                    className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
-                      currentPage === item.id
-                        ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
-                        : 'text-gray-600 hover:text-green-700 hover:bg-green-50 hover:shadow-md'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 mr-2" />
-                    {item.label}
-                  </button>
+                  <div key={item.id} className="flex-shrink-0">
+                    <button
+                      onClick={() => handleNavigation(item.id)}
+                      className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 whitespace-nowrap ${
+                        currentPage === item.id
+                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
+                          : 'text-gray-600 hover:text-green-700 hover:bg-green-50 hover:shadow-md'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 mr-2" />
+                      {item.label}
+                    </button>
+                  </div>
                 )
               })}
             </div>
 
-            {/* Right navigation arrow */}
+            {/* Right navigation arrow - fixed position */}
             <button
               onClick={() => navigateCarousel('next')}
-              className={`p-2 rounded-lg transition-all duration-200 ${
-                carouselIndex + itemsPerView < menuItems.length
-                  ? 'text-gray-600 hover:text-green-700 hover:bg-green-50'
-                  : 'text-gray-300 cursor-not-allowed'
-              }`}
-              disabled={carouselIndex + itemsPerView >= menuItems.length}
+              className="p-2 rounded-lg transition-all duration-200 text-gray-600 hover:text-green-700 hover:bg-green-50 flex-shrink-0 w-10 h-10 flex items-center justify-center"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-          </div>
-
-          {/* Page indicator dots */}
-          <div className="hidden md:flex items-center space-x-1 ml-4">
-            {Array.from({ length: Math.ceil(menuItems.length / itemsPerView) }, (_, i) => (
-              <button
-                key={i}
-                onClick={() => setCarouselIndex(i * itemsPerView)}
-                className={`w-2 h-2 rounded-full transition-all duration-200 ${
-                  Math.floor(carouselIndex / itemsPerView) === i
-                    ? 'bg-green-600 scale-125'
-                    : 'bg-gray-300 hover:bg-gray-400'
-                }`}
-              />
-            ))}
           </div>
 
           {/* Mobile menu button */}

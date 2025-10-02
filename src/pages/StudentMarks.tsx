@@ -5,6 +5,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { KPICard } from '../components/KPICard'
 import { supabase } from '../lib/supabase'
+import { formatNumericDisplay, safeNumberParse } from '../utils/dataConsistency'
 
 interface StudentMark {
   user_id: string
@@ -62,29 +63,68 @@ export function StudentMarks() {
       const { data: studentsData, error: studentsError } = await supabase
         .from('user_marks')
         .select('*')
-        .order('average', { ascending: false, nullsLast: true })
 
       if (studentsError) throw studentsError
 
-      setStudents(studentsData || [])
+      // Client-side sorting for better control and consistency
+      const sortedStudents = studentsData 
+        ? studentsData.sort((a, b) => {        
+            // Ensure valid number comparisons across platforms
+            if (a.average === null && b.average === null) return 0
+            if (a.average === null) return 1
+            if (b.average === null) return -1
+            const avgA = safeNumberParse(a.average, 0)
+            const avgB = safeNumberParse(b.average, 0)
+            return avgB - avgA
+          })
+        : []
+      setStudents(sortedStudents)
 
-      // Calculate statistics
+      // Calculate statistics with proper precision handling
       if (studentsData && studentsData.length > 0) {
-        const validMathMarks = studentsData.filter(s => s.math_mark !== null).map(s => s.math_mark!)
-        const validHomeLanguageMarks = studentsData.filter(s => s.home_language_mark !== null).map(s => s.home_language_mark!)
-        const validApsMarks = studentsData.filter(s => s.aps_mark !== null).map(s => s.aps_mark!)
-        const highAchievers = studentsData.filter(s => s.average && s.average >= 80).length
+        // Use safeNumberParse for all numeric conversions
+        const validMathMarks = studentsData
+          .filter(s => s.math_mark !== null)
+          .map(s => safeNumberParse(s.math_mark, 0))
+        const validHomeLanguageMarks = studentsData
+          .filter(s => s.home_language_mark !== null)
+          .map(s => safeNumberParse(s.home_language_mark, 0))
+        const validApsMarks = studentsData
+          .filter(s => s.aps_mark !== null)
+          .map(s => safeNumberParse(s.aps_mark, 0))
+        
+        // High achievers with precise average checking
+        const highAchievers = studentsData
+          .filter(s => {
+            const avg = safeNumberParse(s.average, 0)
+            return avg >= 80
+          }).length
 
-        const avgMath = validMathMarks.length > 0 ? Math.round(validMathMarks.reduce((a, b) => a + b, 0) / validMathMarks.length) : 0
-        const avgHomeLang = validHomeLanguageMarks.length > 0 ? Math.round(validHomeLanguageMarks.reduce((a, b) => a + b, 0) / validHomeLanguageMarks.length) : 0
-        const avgAps = validApsMarks.length > 0 ? Math.round(validApsMarks.reduce((a, b) => a + b, 0) / validApsMarks.length) : 0
+        // Maintain precision in calculations (no premature rounding)
+        const rawAvgMath = validMathMarks.length > 0 
+          ? validMathMarks.reduce((a, b) => a + b, 0) / validMathMarks.length 
+          : 0
+        const rawAvgHomeLang = validHomeLanguageMarks.length > 0 
+          ? validHomeLanguageMarks.reduce((a, b) => a + b, 0) / validHomeLanguageMarks.length 
+          : 0
+        const rawAvgAps = validApsMarks.length > 0 
+          ? validApsMarks.reduce((a, b) => a + b, 0) / validApsMarks.length 
+          : 0
 
         setStats({
           total_students: studentsData.length,
-          avg_math_mark: avgMath,
-          avg_home_language: avgHomeLang,
-          avg_aps: avgAps,
+          avg_math_mark: Math.round(rawAvgMath),  // Round only when storing for display
+          avg_home_language: Math.round(rawAvgHomeLang),
+          avg_aps: Math.round(rawAvgAps),  // APS must be integers
           high_achievers: highAchievers
+        })
+      } else {
+        setStats({
+          total_students: 0,
+          avg_math_mark: 0,
+          avg_home_language: 0,
+          avg_aps: 0,
+          high_achievers: 0
         })
       }
     } catch (err) {
@@ -114,7 +154,9 @@ export function StudentMarks() {
     else if (mark >= 70) bgColor = 'bg-blue-100 text-blue-800'
     else if (mark >= 50) bgColor = 'bg-yellow-100 text-yellow-800'
     
-    return <span className={`px-2 py-1 rounded-full text-xs font-medium ${bgColor}`}>{mark}%</span>
+    return <span className={`px-2 py-1 rounded-full text-xs font-medium ${bgColor}`}>
+      {formatNumericDisplay(mark, 1, '%')}
+    </span>
   }
 
   const columns = [
@@ -212,6 +254,12 @@ export function StudentMarks() {
   if (loading) return <LoadingSpinner />
   if (error) return <ErrorMessage message={error} onRetry={fetchStudentMarks} />
 
+  // Calculate Life Orientation average on the fly with precision
+  const validLifeOrientationMarks = students.filter(s => s.life_orientation_mark !== null)
+  const lifeOrientationAvg = validLifeOrientationMarks.length > 0
+    ? validLifeOrientationMarks.reduce((sum, s) => sum + safeNumberParse(s.life_orientation_mark, 0), 0) / validLifeOrientationMarks.length
+    : 0
+
   return (
     <div className="space-y-6">
       <div>
@@ -254,30 +302,34 @@ export function StudentMarks() {
           </h2>
           <div className="space-y-4">
             {[
-              { subject: 'Mathematics', avg: stats?.avg_math_mark || 0 },
-              { subject: 'Home Language', avg: stats?.avg_home_language || 0 },
-              { subject: 'Life Orientation', avg: students.filter(s => s.life_orientation_mark).reduce((sum, s) => sum + (s.life_orientation_mark || 0), 0) / Math.max(students.filter(s => s.life_orientation_mark).length, 1) },
-            ].map((item) => (
-              <div key={item.subject} className="flex items-center space-x-4">
-                <div className="w-32 text-sm font-medium text-gray-700">{item.subject}</div>
-                <div className="flex-1">
-                  <div className="bg-gray-200 rounded-full h-3">
-                    <div
-                      className={`h-3 rounded-full transition-all duration-500 ${
-                        item.avg >= 80 ? 'bg-green-500' :
-                        item.avg >= 70 ? 'bg-blue-500' :
-                        item.avg >= 50 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`}
-                      style={{ width: `${Math.min(item.avg, 100)}%` }}
-                    />
+              { subject: 'Mathematics', rawAvg: stats?.avg_math_mark || 0 },
+              { subject: 'Home Language', rawAvg: stats?.avg_home_language || 0 },
+              { subject: 'Life Orientation', rawAvg: lifeOrientationAvg },
+            ].map((item) => {
+              // Round for display while preserving raw calculations
+              const displayAvg = Math.round(item.rawAvg)
+              return (
+                <div key={item.subject} className="flex items-center space-x-4">
+                  <div className="w-32 text-sm font-medium text-gray-700">{item.subject}</div>
+                  <div className="flex-1">
+                    <div className="bg-gray-200 rounded-full h-3">
+                      <div
+                        className={`h-3 rounded-full transition-all duration-500 ${
+                          displayAvg >= 80 ? 'bg-green-500' :
+                          displayAvg >= 70 ? 'bg-blue-500' :
+                          displayAvg >= 50 ? 'bg-yellow-500' :
+                          'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(displayAvg, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="w-12 text-sm font-semibold text-gray-700 text-right">
+                    {displayAvg}%
                   </div>
                 </div>
-                <div className="w-12 text-sm font-semibold text-gray-700 text-right">
-                  {Math.round(item.avg)}%
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -290,20 +342,27 @@ export function StudentMarks() {
             {[
               { range: '40+ (Excellent)', min: 40, color: 'bg-green-500' },
               { range: '35-39 (Very Good)', min: 35, max: 39, color: 'bg-blue-500' },
-              { range: '30-34 (Good)', min: 30, max: 34, color: 'bg-yellow-500' },
+              { range: '30-34 (Good)', min: 30, max: 33.5, color: 'bg-yellow-500' }, // Fixed non-integer boundary
               { range: '25-29 (Fair)', min: 25, max: 29, color: 'bg-orange-500' },
               { range: '20-24 (Poor)', min: 20, max: 24, color: 'bg-red-500' },
               { range: '<20 (Very Poor)', max: 19, color: 'bg-gray-500' },
             ].map((bucket) => {
               const count = students.filter(s => {
                 if (!s.aps_mark) return false
-                if (bucket.min && bucket.max) return s.aps_mark >= bucket.min && s.aps_mark <= bucket.max
-                if (bucket.min) return s.aps_mark >= bucket.min
-                if (bucket.max) return s.aps_mark <= bucket.max
+                const aps = safeNumberParse(s.aps_mark, 0)
+                if (bucket.min && bucket.max && bucket.max === 33.5)
+                  return aps >= bucket.min && aps <= 34  // Handle the -34 range specially
+                if (bucket.min && bucket.max) 
+                  return aps >= bucket.min && aps <= bucket.max
+                if (bucket.min) 
+                  return aps >= bucket.min
+                if (bucket.max) 
+                  return aps <= bucket.max
                 return false
               }).length
               
               const percentage = students.length > 0 ? (count / students.length) * 100 : 0
+              const displayPercentage = Math.round(percentage * 10) / 10  // One decimal place for clarity
               
               return (
                 <div key={bucket.range} className="flex items-center space-x-4">
@@ -312,7 +371,7 @@ export function StudentMarks() {
                     <div className="bg-gray-200 rounded-full h-4">
                       <div
                         className={`h-4 rounded-full transition-all duration-500 ${bucket.color}`}
-                        style={{ width: `${percentage}%` }}
+                        style={{ width: `${displayPercentage}%` }}
                       />
                     </div>
                   </div>
