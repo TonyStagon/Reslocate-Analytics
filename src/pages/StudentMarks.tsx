@@ -8,38 +8,37 @@ import { supabase } from '../lib/supabase'
 import { formatNumericDisplay, safeNumberParse } from '../utils/dataConsistency'
 
 interface StudentMark {
-  user_id: string
-  math_mark: number | null
-  home_language_mark: number | null
-  first_additional_language_mark: number | null
-  second_additional_language_mark: number | null
-  subject1: string | null
-  subject1_mark: number | null
-  subject2: string | null
-  subject2_mark: number | null
-  subject3: string | null
-  subject3_mark: number | null
-  subject4: string | null
-  subject4_mark: number | null
-  life_orientation_mark: number | null
-  average: number | null
-  math_level: number | null
-  home_language_level: number | null
-  first_additional_language_level: number | null
-  second_additional_language_level: number | null
-  subject1_level: number | null
-  subject2_level: number | null
-  subject3_level: number | null
-  subject4_level: number | null
-  aps_mark: number | null
-  life_orientation_level: number | null
-  math_type: string | null
-  home_language: string | null
-  first_additional_language: string | null
-  second_additional_language: string | null
-  profile_id: string | null
+  user_id: string                              // uuid (primary identifier)
+  math_mark: number | null                     // numeric/integer (0-100)
+  home_language_mark: number | null            // numeric/integer (0-100)
+  first_additional_language_mark: number | null // numeric/integer (0-100)
+  second_additional_language_mark: number | null // numeric/integer (0-100)
+  subject1: string | null                      // text
+  subject1_mark: number | null                 // numeric/integer (0-100)
+  subject2: string | null                      // text
+  subject2_mark: number | null                 // numeric/integer (0-100)
+  subject3: string | null                      // text
+  subject3_mark: number | null                 // numeric/integer (0-100)
+  subject4: string | null                      // text
+  subject4_mark: number | null                 // numeric/integer (0-100)
+  life_orientation_mark: number | null         // numeric/integer (0-100)
+  average: number | null                       // numeric/integer (0-100)
+  math_level: number | null                    // smallint (0-7)
+  home_language_level: number | null           // smallint (0-7)
+  first_additional_language_level: number | null // smallint (0-7)
+  second_additional_language_level: number | null // smallint (0-7)
+  subject1_level: number | null                // smallint (0-7)
+  subject2_level: number | null                // smallint (0-7)
+  subject3_level: number | null                // smallint (0-7)
+  subject4_level: number | null                // smallint (0-7)
+  aps_mark: number | null                      // integer (0-42) ⭐ THIS IS THE APS FIELD
+  life_orientation_level: number | null        // smallint (0-7)
+  math_type: string | null                     // text
+  home_language: string | null                 // text
+  first_additional_language: string | null     // text
+  second_additional_language: string | null    // text
+  profile_id: string | null                    // uuid (foreign key?)
 }
-
 interface StudentStats {
   total_students: number
   avg_math_mark: number

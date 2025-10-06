@@ -2,5 +2,4 @@ ANALYTIC DASHBOARD
 
 - Course Matches for  Instituion / Faculty matches for Reslocate
 - For Profile We need to profile a learner that matches with type on Institution **
--
--
++  (Priler's hobiees  , Report or Marks 

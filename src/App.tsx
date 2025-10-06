@@ -10,6 +10,7 @@ import { SessionHealth } from "./pages/SessionHealth";
 import { Engagement } from "./pages/Engagement";
 import { UserJourney } from "./pages/UserJourney";
 import { FeatureAdoption } from "./pages/FeatureAdoption";
+import { MatchingProfiles } from "./pages/MatchingProfiles";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("overview");
@@ -34,6 +35,8 @@ function App() {
         return <UserJourney />;
       case "feature-adoption":
         return <FeatureAdoption />;
+      case "matching-profiles":
+        return <MatchingProfiles />;
       default:
         return <Overview />;
     }

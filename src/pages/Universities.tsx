@@ -5,6 +5,7 @@ import { ErrorMessage } from '../components/ErrorMessage'
 import { supabase } from '../lib/supabase'
 import { ChevronDown } from 'lucide-react'
 
+
 interface University {
   qualification: string
   aps: number
@@ -12,6 +13,7 @@ interface University {
   university_name: string
   id: number
 }
+
 
 export function Universities() {
   const [universities, setUniversities] = useState<University[]>([])

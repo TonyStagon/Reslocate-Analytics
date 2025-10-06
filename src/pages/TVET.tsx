@@ -6,11 +6,11 @@ import { supabase } from "../lib/supabase";
 import { ChevronDown } from "lucide-react";
 
 interface TVETCollege {
-  qualification: string;
-  aps: number;
-  faculty: string;
-  tvet_college_name: string;
-  id: number;
+  id: number                    // integer (primary key)
+  qualification: string         // text (program name)
+  aps: number                   // integer (required APS) ⭐ THIS IS THE REQUIRED APS FIELD
+  faculty: string               // text (faculty/department)
+  tvet_college_name: string     // text (institution name)
 }
 
 export function TVET() {

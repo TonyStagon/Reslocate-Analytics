@@ -33,14 +33,16 @@ export function Navigation({
 
   const menuItems = [
     { id: "overview", label: "Overview", icon: BarChart3 },
+    { id: "matching-profiles", label: "Matching Profiles", icon: Target },
     { id: "universities", label: "Universities", icon: GraduationCap },
     { id: "tvet", label: "TVET Colleges", icon: Building2 },
+    { id: "matches", label: "Matches", icon: Users },
     { id: "funding", label: "Funding", icon: DollarSign },
     { id: "institutions", label: "Institutions", icon: MapPin },
     { id: "session-health", label: "Session Health", icon: Activity },
     { id: "engagement", label: "Engagement", icon: MousePointer },
     { id: "user-journey", label: "User Journey", icon: GitBranch },
-    { id: "feature-adoption", label: "Feature Adoption", icon: Target },
+    { id: "feature-adoption", label: "Feature Adoption", icon: Activity },
   ];
 
   const handleNavigation = (page: string) => {
