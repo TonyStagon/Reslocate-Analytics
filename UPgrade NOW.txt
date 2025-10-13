@@ -1,0 +1,18 @@
++ Total active users  (profiel+ parent= tables per each  )
+-  seperate  (Learners  and Parents )
++  Total Downloads | Weekly | Monthly| Daily | 
+- Also Goes with Growth Rate 
++  Growth Rate (Numeric and percentage | Weekly | Monthly| Daily)
++ Weekly || Monthly || Daily Active && Parents || Active Learners 
+  - Also Growth Rate 
++ 
+
+sessions 
++  Total Sessions 
++  D|M|W sessions
+-  Growth Rate ( Numeric  and Percentage )
++
+
++ USER ID replace Session |  Name Suranme|  Grade | High School | DOB 
+- Usr id should be clickable leading  to Pro-Info 
+
