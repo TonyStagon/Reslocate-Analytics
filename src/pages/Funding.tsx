@@ -36,7 +36,7 @@ export function Funding() {
       const { data: scholarshipsData, error: scholarshipsError } = await supabase
         .from('scholarships')
         .select('scholarships, scholarship_url, closing_date, source, created_at')
-        .order('closing_date', { nullsLast: false })
+        .order('closing_date', { ascending: true })
 
       if (scholarshipsError) throw scholarshipsError
 
@@ -54,7 +54,7 @@ export function Funding() {
       const { data: bursariesData, error: bursariesError } = await supabase
         .from('bursaries')
         .select('scholarships, scholarship_url, source, scraped_at')
-        .order('scraped_at', { ascending: false, nullsLast: true })
+        .order('scraped_at', { ascending: false })
 
       if (bursariesError) throw bursariesError
 
