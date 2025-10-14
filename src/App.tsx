@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Layout } from "./components/Layout";
 import { Navigation } from "./components/Navigation";
 import { Overview } from "./pages/Overview";
-import { ActiveUsers } from "./pages/ActiveUsers";
 import { Universities } from "./pages/Universities";
 import { TVET } from "./pages/TVET";
 import { Funding } from "./pages/Funding";
@@ -20,8 +19,6 @@ function App() {
     switch (currentPage) {
       case "overview":
         return <Overview />;
-      case "active-users":
-        return <ActiveUsers />;
       case "universities":
         return <Universities />;
       case "tvet":
