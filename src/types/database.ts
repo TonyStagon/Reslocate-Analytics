@@ -1,8 +1,4 @@
-"Conversion of type '{ session_id: any; user_id: any; start_time: any; profiles: { id: any; role: any; }[]; }[]' to type 'SessionData[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
-  Type '{ session_id: any; user_id: any; start_time: any; profiles: { id: any; role: any; }[]; }' is not comparable to type 'SessionData'.
-    Types of property 'profiles' are incompatible.
-      Type '{ id: any; role: any; }[]' is missing the following properties from type '{ id: string; role: "Learner" | "Parent" | "Tutor" | "Other"; }': id, rolets(2352)
-  /**
+/**
  * Database types for defined schema structures
  */
 
