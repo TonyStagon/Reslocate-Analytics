@@ -11,7 +11,7 @@ sessions
 +  Total Sessions 
 +  D|M|W sessions
 -  Growth Rate ( Numeric  and Percentage )
-+
+
 
 + USER ID replace Session |  Name Suranme|  Grade | High School | DOB 
 - Usr id should be clickable leading  to Pro-Info 
