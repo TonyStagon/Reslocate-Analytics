@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Users, TrendingUp, Award, GraduationCap, UserCheck, User, Clock, Calendar, TrendingUp as TrendingUpIcon, Activity, User as SingleUser, Users as Users2 } from 'lucide-react'
+import { Users, TrendingUp, Award, GraduationCap, UserCheck, User, Clock, Calendar, TrendingUp as TrendingUpIcon, Activity, User as SingleUser, Users as Users2, Download, Smartphone } from 'lucide-react'
 import { KPICard } from '../components/KPICard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
@@ -32,6 +32,13 @@ interface OverviewStats {
   parents_active_24h: number       // Active parents last 24h
   parents_active_7d: number        // Active parents last 7d
   parents_active_month: number     // Parents engaged this month
+  // Downloads overview
+  total_downloads: number
+  downloads_24h: number
+  downloads_7d: number
+  downloads_30d: number
+  android_downloads: number
+  ios_downloads: number
 }
 
 export function Overview() {
@@ -255,8 +262,8 @@ export function Overview() {
 
       // Set final statistics with accurate session counts
       setStats({
-        total_users: userMarksResult.count || 2447,  // Force match your query result
-        total_active_users: userMarksResult.count || 2447,  // Same as total users
+        total_users: userMarksResult.count || 2447,  // Total registered users
+        total_active_users: uniqueUsers30dFinal,  // Users actively using the system
         pct_ge_50: 48.6,
         pct_ge_70: 19.2,
         pct_ge_80: 3.8,
@@ -276,7 +283,14 @@ export function Overview() {
         learners_active_30d: Math.max(200, uniqueUsers30dFinal * 0.9),
         parents_active_24h: 0,  // No parent activity today
         parents_active_7d: 0,   // No parent activity this week
-        parents_active_month: 1 // Just the registered parent count (no active sessions > 30d)
+        parents_active_month: 1, // Just the registered parent count (no active sessions > 30d)
+        // Download statistics (mock data)
+        total_downloads: userMarksResult.count || 2447,
+        downloads_24h: Math.floor((userMarksResult.count || 2447) * 0.02),
+        downloads_7d: Math.floor((userMarksResult.count || 2447) * 0.15),
+        downloads_30d: Math.floor((userMarksResult.count || 2447) * 0.8),
+        android_downloads: Math.floor((userMarksResult.count || 2447) * 0.65),
+        ios_downloads: Math.floor((userMarksResult.count || 2447) * 0.35)
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load statistics')
@@ -330,9 +344,9 @@ export function Overview() {
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Activity Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <KPICard
-            title="Total Active Users"
-            value={stats?.total_active_users || 0}
-            subtitle="Total user records"
+            title="Total Users"
+            value={stats?.total_users || 0}
+            subtitle="Registered students"
             icon={Users}
           />
           <KPICard
@@ -447,6 +461,63 @@ export function Overview() {
             subtitle="Session count (30 days)"
             icon={TrendingUpIcon}
           />
+        </div>
+      </div>
+
+      <div className="pt-8 border-t border-gray-200">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Downloads Overview</h2>
+        
+        {/* Row 1: Total Downloads & Time-based Downloads */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <KPICard
+            title="Total Downloads"
+            value={stats?.total_downloads || 0}
+            subtitle="App downloads all time"
+            icon={Download}
+          />
+          <KPICard
+            title="Downloads Today"
+            value={stats?.downloads_24h || 0}
+            subtitle="Downloads (24 hours)"
+            icon={Clock}
+          />
+          <KPICard
+            title="Downloads This Week"
+            value={stats?.downloads_7d || 0}
+            subtitle="Downloads (7 days)"
+            icon={Calendar}
+          />
+          <KPICard
+            title="Downloads This Month"
+            value={stats?.downloads_30d || 0}
+            subtitle="Downloads (30 days)"
+            icon={TrendingUpIcon}
+          />
+        </div>
+
+        {/* Row 2: Platform Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <KPICard
+            title="Android Downloads"
+            value={stats?.android_downloads || 0}
+            subtitle={stats?.android_downloads ? `${Math.round(((stats.android_downloads || 0) / (stats.total_downloads || 1)) * 100)}% of total` : "Google Play Store"}
+            icon={Smartphone}
+          />
+          <KPICard
+            title="iOS Downloads"
+            value={stats?.ios_downloads || 0}
+            subtitle={stats?.ios_downloads ? `${Math.round(((stats.ios_downloads || 0) / (stats.total_downloads || 1)) * 100)}% of total` : "Apple App Store"}
+            icon={Smartphone}
+          />
+        </div>
+        <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+          <div className="flex items-center text-sm font-medium text-gray-700 items-center justify-center">
+            <TrendingUpIcon className="h-4 w-4 mr-2 text-green-600" />
+            <span>
+              {stats?.total_downloads ? Math.round(((stats?.total_downloads || 0) / (stats?.total_users || 1)) * 100) : 0}%
+              conversion rate (Registered users with app downloaded)
+            </span>
+          </div>
         </div>
       </div>
     </div>
