@@ -4,6 +4,7 @@ import { KPICard } from '../components/KPICard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { supabase } from '../lib/supabase'
+import { fetchResplicatePlayStoreStats, getPlatformDownloads } from '../utils/playStoreStats'
 
 interface ActiveUsersData {
   active_24h: number
@@ -83,7 +84,7 @@ export function Overview() {
           .from('sessions')
           .select('start_time, user_id', { count: 'exact', head: true })
           .gte('start_time', twentyFourHoursAgo)
-          .then(res => {
+          .then((res: any) => {
             console.log('24h sessions data:', res.data?.slice(0, 3))
             return res
           }),
@@ -91,7 +92,7 @@ export function Overview() {
           .from('sessions')
           .select('start_time, user_id', { count: 'exact', head: true })
           .gte('start_time', sevenDaysAgo)
-          .then(res => {
+          .then((res: any) => {
             console.log('7d sessions data:', res.data?.slice(0, 3))
             return res
           }),
@@ -99,7 +100,7 @@ export function Overview() {
           .from('sessions')
           .select('start_time, user_id', { count: 'exact', head: true })
           .gte('start_time', thirtyDaysAgo)
-          .then(res => {
+          .then((res: any) => {
             console.log('30d sessions data:', res.data?.slice(0, 3))
             return res
           })
@@ -211,15 +212,15 @@ export function Overview() {
       // Count unique users from each result
       // Using Set to ensure uniqueness since count: 'exact' may still count duplicates
       const uniqueUsers24h = new Set(
-        uniqueUsers24hResult.data?.map(s => s.user_id) || []
+        uniqueUsers24hResult.data?.map((s: any) => s.user_id) || []
       ).size
       
       const uniqueUsers7d = new Set(
-        uniqueUsers7dResult.data?.map(s => s.user_id) || []
+        uniqueUsers7dResult.data?.map((s: any) => s.user_id) || []
       ).size
       
       const uniqueUsers30d = new Set(
-        uniqueUsers30dResult.data?.map(s => s.user_id) || []
+        uniqueUsers30dResult.data?.map((s: any) => s.user_id) || []
       ).size
 
       // In case of no data, provide meaningful fallback to session count % (rough estimate)
@@ -251,8 +252,9 @@ export function Overview() {
 
       if (userMarksResult.error) throw userMarksResult.error
 
-      // Get active user analytics
+      // Get active user analytics and download statistics
       const activeUsersData: ActiveUsersData = await activeUsersPromise
+      const downloadStats = await fetchResplicatePlayStoreStats()
 
       console.log('Total sessions all time:', totalSessionsCount)
       console.log('Sessions 24h:', sessionCount24h, '- 7d:', sessionCount7d, '- 30d:', sessionCount30d)
@@ -260,7 +262,9 @@ export function Overview() {
       console.log('Learner count:', learnerResult.count)
       console.log('Parent count:', parentResult.count)
 
-      // Set final statistics with accurate session counts
+      // Set final statistics with accurate session counts and download data
+      const platforms = getPlatformDownloads(downloadStats.android_stats.current_downloads)
+      
       setStats({
         total_users: userMarksResult.count || 2447,  // Total registered users
         total_active_users: uniqueUsers30dFinal,  // Users actively using the system
@@ -284,13 +288,13 @@ export function Overview() {
         parents_active_24h: 0,  // No parent activity today
         parents_active_7d: 0,   // No parent activity this week
         parents_active_month: 1, // Just the registered parent count (no active sessions > 30d)
-        // Download statistics (mock data)
-        total_downloads: userMarksResult.count || 2447,
-        downloads_24h: Math.floor((userMarksResult.count || 2447) * 0.02),
-        downloads_7d: Math.floor((userMarksResult.count || 2447) * 0.15),
-        downloads_30d: Math.floor((userMarksResult.count || 2447) * 0.8),
-        android_downloads: Math.floor((userMarksResult.count || 2447) * 0.65),
-        ios_downloads: Math.floor((userMarksResult.count || 2447) * 0.35)
+        // Download statistics from Play Store (or estimates when unavailable)
+        total_downloads: downloadStats.android_stats.current_downloads,
+        downloads_24h: downloadStats.android_stats.daily_downloads,
+        downloads_7d: downloadStats.android_stats.weekly_downloads,
+        downloads_30d: downloadStats.android_stats.monthly_downloads,
+        android_downloads: platforms.android,
+        ios_downloads: platforms.ios
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load statistics')
