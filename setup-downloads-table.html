@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Downloads Table</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Setup Download Stats Table</h1>
+    <button onclick="setupTable()">Create Table & Insert Initial Data</button>
+    <button onclick="updateStats()">Update Today's Stats</button>
+    <div id="output" style="margin-top: 20px; white-space: pre-wrap; font-family: monospace;"></div>
+
+    <div style="margin-top: 30px; padding: 20px; border: 1px solid #ccc;">
+        <h2>Manual Update Form</h2>
+        <form onsubmit="submitStats(event)">
+            <label>Total Downloads: <input type="number" id="totalDownloads" value="1200" required></label><br><br>
+            <label>Daily Downloads: <input type="number" id="dailyDownloads" value="45" required></label><br><br>
+            <label>Android Downloads: <input type="number" id="androidDownloads" value="900" required></label><br><br>
+            <label>iOS Downloads: <input type="number" id="iosDownloads" value="300" required></label><br><br>
+            <label>Rating (0-5): <input type="number" step="0.1" id="rating" value="4.2" required></label><br><br>
+            <label>Reviews Count: <input type="number" id="reviewsCount" value="32" required></label><br><br>
+            <button type="submit">Submit Stats</button>
+        </form>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://xowstorcasdewwjvcgtn.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhvd3N0b3JjYXNkZXd3anZjZ3RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5OTc1MDIsImV4cCI6MjA3NjU3MzUwMn0.Xhm-lRikMGhIC78F1Y50utiFfTWmilIz9avvXQKBD90'
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+        function log(message) {
+            document.getElementById('output').textContent += message + '\n'
+            console.log(message)
+        }
+
+        async function setupTable() {
+            log('Setting up download_stats table...')
+
+            try {
+                const { data, error } = await supabase
+                    .from('download_stats')
+                    .insert([
+                        {
+                            date: new Date().toISOString().split('T')[0],
+                            total_downloads: 1200,
+                            daily_downloads: 45,
+                            android_downloads: 900,
+                            ios_downloads: 300,
+                            rating: 4.2,
+                            reviews_count: 32,
+                            source: 'manual'
+                        }
+                    ])
+                    .select()
+
+                if (error) {
+                    if (error.code === '42P01') {
+                        log('ERROR: Table does not exist. You need to run the migration SQL in Supabase dashboard.')
+                        log('Go to Supabase Dashboard > SQL Editor and run the migration from:')
+                        log('supabase/migrations/create_download_stats_table.sql')
+                    } else {
+                        log('ERROR: ' + error.message)
+                    }
+                } else {
+                    log('SUCCESS: Initial data inserted!')
+                    log(JSON.stringify(data, null, 2))
+                }
+            } catch (err) {
+                log('ERROR: ' + err.message)
+            }
+        }
+
+        async function updateStats() {
+            log('Updating download stats...')
+
+            try {
+                const { data, error } = await supabase
+                    .from('download_stats')
+                    .upsert({
+                        date: new Date().toISOString().split('T')[0],
+                        total_downloads: 1200,
+                        daily_downloads: 45,
+                        android_downloads: 900,
+                        ios_downloads: 300,
+                        rating: 4.2,
+                        reviews_count: 32,
+                        source: 'manual',
+                        updated_at: new Date().toISOString()
+                    })
+                    .select()
+
+                if (error) {
+                    log('ERROR: ' + error.message)
+                } else {
+                    log('SUCCESS: Stats updated!')
+                    log(JSON.stringify(data, null, 2))
+                }
+            } catch (err) {
+                log('ERROR: ' + err.message)
+            }
+        }
+
+        async function submitStats(event) {
+            event.preventDefault()
+
+            const stats = {
+                date: new Date().toISOString().split('T')[0],
+                total_downloads: parseInt(document.getElementById('totalDownloads').value),
+                daily_downloads: parseInt(document.getElementById('dailyDownloads').value),
+                android_downloads: parseInt(document.getElementById('androidDownloads').value),
+                ios_downloads: parseInt(document.getElementById('iosDownloads').value),
+                rating: parseFloat(document.getElementById('rating').value),
+                reviews_count: parseInt(document.getElementById('reviewsCount').value),
+                source: 'manual',
+                updated_at: new Date().toISOString()
+            }
+
+            log('Submitting stats: ' + JSON.stringify(stats, null, 2))
+
+            try {
+                const { data, error } = await supabase
+                    .from('download_stats')
+                    .upsert(stats)
+                    .select()
+
+                if (error) {
+                    log('ERROR: ' + error.message)
+                } else {
+                    log('SUCCESS: Custom stats submitted!')
+                    log(JSON.stringify(data, null, 2))
+                    alert('Stats updated successfully! Refresh your dashboard to see the changes.')
+                }
+            } catch (err) {
+                log('ERROR: ' + err.message)
+            }
+        }
+    </script>
+</body>
+</html>

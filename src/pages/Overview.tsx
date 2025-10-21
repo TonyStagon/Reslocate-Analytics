@@ -4,7 +4,7 @@ import { KPICard } from '../components/KPICard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { supabase } from '../lib/supabase'
-import { fetchResplicatePlayStoreStats, getPlatformDownloads } from '../utils/playStoreStats'
+import { fetchDownloadStats, getPlatformDownloads } from '../utils/downloadStats'
 
 interface ActiveUsersData {
   active_24h: number
@@ -254,16 +254,17 @@ export function Overview() {
 
       // Get active user analytics and download statistics
       const activeUsersData: ActiveUsersData = await activeUsersPromise
-      const downloadStats = await fetchResplicatePlayStoreStats()
+      const downloadStats = await fetchDownloadStats()
 
       console.log('Total sessions all time:', totalSessionsCount)
       console.log('Sessions 24h:', sessionCount24h, '- 7d:', sessionCount7d, '- 30d:', sessionCount30d)
       console.log('Total students:', userMarksResult.count)
       console.log('Learner count:', learnerResult.count)
       console.log('Parent count:', parentResult.count)
+      console.log('Download stats:', downloadStats)
 
       // Set final statistics with accurate session counts and download data
-      const platforms = getPlatformDownloads(downloadStats.android_stats.current_downloads)
+      const platforms = getPlatformDownloads(downloadStats.total_downloads)
       
       setStats({
         total_users: userMarksResult.count || 2447,  // Total registered users
@@ -288,13 +289,13 @@ export function Overview() {
         parents_active_24h: 0,  // No parent activity today
         parents_active_7d: 0,   // No parent activity this week
         parents_active_month: 1, // Just the registered parent count (no active sessions > 30d)
-        // Download statistics from Play Store (or estimates when unavailable)
-        total_downloads: downloadStats.android_stats.current_downloads,
-        downloads_24h: downloadStats.android_stats.daily_downloads,
-        downloads_7d: downloadStats.android_stats.weekly_downloads,
-        downloads_30d: downloadStats.android_stats.monthly_downloads,
-        android_downloads: platforms.android,
-        ios_downloads: platforms.ios
+        // Download statistics from database or fallback
+        total_downloads: downloadStats.total_downloads,
+        downloads_24h: downloadStats.downloads_24h,
+        downloads_7d: downloadStats.downloads_7d,
+        downloads_30d: downloadStats.downloads_30d,
+        android_downloads: downloadStats.android_downloads,
+        ios_downloads: downloadStats.ios_downloads
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load statistics')
