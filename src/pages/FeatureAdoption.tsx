@@ -27,12 +27,6 @@ interface PageCTR {
   ctr: number
 }
 
-interface DailyButtonClicks {
-  date: string
-  total_clicks: number
-  unique_sessions: number
-  avg_clicks_per_session: number
-}
 
 interface FeatureAdoption {
   week: string
@@ -45,67 +39,11 @@ export function FeatureAdoption() {
   const [stats, setStats] = useState<AdoptionStats | null>(null)
   const [pageCTR, setPageCTR] = useState<PageCTR[]>([])
   const [adoptionTrends, setAdoptionTrends] = useState<FeatureAdoption[]>([])
-  const [dailyClicks, setDailyClicks] = useState<DailyButtonClicks[]>([])
   const [dailyClickActivity, setDailyClickActivity] = useState<Array<{date: string, clicks: number, activity: 'Low Activity' | 'Medium Activity' | 'High Activity'}>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d')
   
-  // Define type for the cohort heatmap section
-  interface CohortHeatmapData {
-    cohort_week: string
-    new_users: number
-    wk1_retained: number
-    wk4_retained: number
-    wk1_retention_rate: number
-    wk4_retention_rate: number
-    conv_rate: number
-    match_rate: number
-  }
-  // Mock data for cohort retention heatmap (replace with real data from database)
-  const cohortData: CohortHeatmapData[] = [
-    {
-      "cohort_week": "2025-09-09",
-      "new_users": 154,
-      "wk1_retained": 121,
-      "wk4_retained": 88,
-      "wk1_retention_rate": 79,
-      "wk4_retention_rate": 57,
-      "conv_rate": 45,
-      "match_rate": 63
-    },
-    {
-      "cohort_week": "2025-09-02",
-      "new_users": 142,
-      "wk1_retained": 109,
-      "wk4_retained": 92,
-      "wk1_retention_rate": 77,
-      "wk4_retention_rate": 65,
-      "conv_rate": 48,
-      "match_rate": 67
-    },
-    {
-      "cohort_week": "2025-08-26",
-      "new_users": 168,
-      "wk1_retained": 134,
-      "wk4_retained": 85,
-      "wk1_retention_rate": 80,
-      "wk4_retention_rate": 51,
-      "conv_rate": 52,
-      "match_rate": 59
-    },
-    {
-      "cohort_week": "2025-08-19",
-      "new_users": 121,
-      "wk1_retained": 95,
-      "wk4_retained": 98,
-      "wk1_retention_rate": 79,
-      "wk4_retention_rate": 81,
-      "conv_rate": 47,
-      "match_rate": 72
-    }
-  ]
-
   const calculateDateRange = () => {
     const endDate = new Date()
     const startDate = new Date()
@@ -209,7 +147,7 @@ export function FeatureAdoption() {
       const todayData = todayClicks || []
 
       // Process today's stats
-      const uniqueSessionsToday = new Set(todayData.map(click => click.session_id)).size
+      const uniqueSessionsToday = new Set(todayData?.map((click: ButtonClick) => click.session_id) || []).size
       
       // Process page-level CTR data
       const pageStats: Record<string, { clicks: number; sessions: Set<string> }> = {}
@@ -247,25 +185,6 @@ export function FeatureAdoption() {
       })).sort((a, b) => b.total_clicks - a.total_clicks)
       .slice(0, 10)
 
-      // Process daily trends
-      const dailyStats: Record<string, { clicks: number; sessions: Set<string> }> = {}
-      clicks.forEach(click => {
-        const date = new Date(click.created_at).toISOString().split('T')[0]
-        if (!dailyStats[date]) {
-          dailyStats[date] = { clicks: 0, sessions: new Set() }
-        }
-        dailyStats[date].clicks++
-        dailyStats[date].sessions.add(click.session_id)
-      })
-
-      const dailyClicksData: DailyButtonClicks[] = Object.entries(dailyStats)
-        .map(([date, data]) => ({
-          date,
-          total_clicks: data.clicks,
-          unique_sessions: data.sessions.size,
-          avg_clicks_per_session: Math.round((data.clicks / Math.max(data.sessions.size, 1)) * 100) / 100
-        }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
       // Process weekly adoption trends
       const weeklyStats: Record<string, { clicks: number; sessions: Set<string>; pages: Set<string> }> = {}
@@ -296,7 +215,6 @@ export function FeatureAdoption() {
       setStats(realStats)
       setPageCTR(pageCTRData)
       setAdoptionTrends(trendsData)
-      setDailyClicks(dailyClicksData)
       
       // Verifying data fetch - log unique page names for debugging
       const uniquePages = Object.keys(pageStats)
@@ -550,49 +468,6 @@ export function FeatureAdoption() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Cohort Retention Heatmap</h2>
-        <div className="overflow-x-auto">
-          <div className="grid grid-cols-8 gap-2 min-w-full">
-            <div className="text-xs font-medium text-gray-500 p-2">Cohort</div>
-            <div className="text-xs font-medium text-gray-500 p-2">Users</div>
-            <div className="text-xs font-medium text-gray-500 p-2">Week 1</div>
-            <div className="text-xs font-medium text-gray-500 p-2">Week 4</div>
-            <div className="text-xs font-medium text-gray-500 p-2">W1 Rate</div>
-            <div className="text-xs font-medium text-gray-500 p-2">W4 Rate</div>
-            <div className="text-xs font-medium text-gray-500 p-2">Conv</div>
-            <div className="text-xs font-medium text-gray-500 p-2">Match</div>
-            
-            {cohortData.slice(0, 4).map((cohort: CohortHeatmapData) => (
-              <React.Fragment key={cohort.cohort_week}>
-                <div className="text-xs p-2 bg-gray-50">
-                  {new Date(cohort.cohort_week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </div>
-                <div className="text-xs p-2">{cohort.new_users}</div>
-                <div className="text-xs p-2">{cohort.wk1_retained}</div>
-                <div className="text-xs p-2">{cohort.wk4_retained}</div>
-                <div className={`text-xs p-2 rounded ${
-                  cohort.wk1_retention_rate >= 40 ? 'bg-green-100 text-green-800' :
-                  cohort.wk1_retention_rate >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {cohort.wk1_retention_rate}%
-                </div>
-                <div className={`text-xs p-2 rounded ${
-                  cohort.wk4_retention_rate >= 20 ? 'bg-green-100 text-green-800' :
-                  cohort.wk4_retention_rate >= 10 ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {cohort.wk4_retention_rate}%
-                </div>
-                <div className="text-xs p-2">{cohort.conv_rate}%</div>
-                <div className="text-xs p-2">{cohort.match_rate}%</div>
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Click-Through Rate by Page Name</h2>
@@ -607,18 +482,6 @@ export function FeatureAdoption() {
           />
         </div>
         
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Daily Activity Details</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Daily breakdown of button click statistics and session engagement
-          </p>
-          <SearchableTable
-            data={dailyClicks}
-            columns={activityColumns}
-            searchPlaceholder="Search dates..."
-           exportFilename="daily_button_activity"
-          />
-        </div>
       </div>
     </div>
   )

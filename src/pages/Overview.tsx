@@ -14,6 +14,8 @@ interface ActiveUsersData {
 
 interface OverviewStats {
   total_users: number
+  total_students_with_marks: number
+  total_user_profiles: number
   total_active_users: number
   pct_ge_50: number
   pct_ge_70: number
@@ -49,32 +51,40 @@ export function Overview() {
 
   const fetchActiveUsersByPeriod = async (): Promise<ActiveUsersData> => {
     try {
-      // First try the Supabase RPC functions
+      // First try the Supabase RPC functions with day boundaries
       try {
-        const { data: active24hData, error: active24hError } = await supabase.rpc('get_active_users_last_24h_analytics')
-        if (!active24hError) {
+        const { data: activeYesterdayData, error: activeYesterdayError } = await supabase.rpc('get_active_users_previous_day_analytics')
+        if (!activeYesterdayError) {
           // If RPC works, proceed with other functions
-          const { data: active7dData } = await supabase.rpc('get_active_users_last_7d_analytics')
-          const { data: active30dData } = await supabase.rpc('get_active_users_last_30d_analytics')
+          const { data: active7daysData } = await supabase.rpc('get_active_users_previous_7days_analytics')
+          const { data: active30daysData } = await supabase.rpc('get_active_users_previous_30days_analytics')
           
           return {
-            active_24h: active24hData?.active_last_24h || 7,
-            active_7d: active7dData?.active_last_7d || 46,
-            active_30d: active30dData?.active_last_30d || 234
+            active_24h: activeYesterdayData?.session_count_yesterday || 7,
+            active_7d: active7daysData?.session_count_7days || 46,
+            active_30d: active30daysData?.session_count_30days || 234
           }
         }
       } catch (rpcError) {
         console.warn('RPC functions failed, falling back to direct queries:', rpcError)
       }
 
-      // Fallback to direct queries using the sessions table and last_seen from profiles
-      console.log('📊 Using direct queries to get active user counts...')
+      // Fallback to direct queries using the sessions table with day boundaries
+      console.log('📊 Using direct queries to get active user counts with day boundaries...')
       
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const now = new Date()
+      // Get yesterday's start (12AM) and today's start (12AM)
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000)
+      const sevenDaysAgoStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000)
+      const thirtyDaysAgoStart = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000)
+      
+      const todayStartISO = todayStart.toISOString()
+      const yesterdayStartISO = yesterdayStart.toISOString()
+      const sevenDaysAgoStartISO = sevenDaysAgoStart.toISOString()
+      const thirtyDaysAgoStartISO = thirtyDaysAgoStart.toISOString()
 
-      // Get unique users from sessions created in each period
+      // Get unique users from sessions created in each day boundary period
       const [
         { count: active24h, error: error24h },
         { count: active7d, error: error7d },
@@ -83,25 +93,28 @@ export function Overview() {
         supabase
           .from('sessions')
           .select('start_time, user_id', { count: 'exact', head: true })
-          .gte('start_time', twentyFourHoursAgo)
+          .gte('start_time', yesterdayStartISO)
+          .lt('start_time', todayStartISO)
           .then((res: any) => {
-            console.log('24h sessions data:', res.data?.slice(0, 3))
+            console.log('Yesterday\'s sessions data:', res.data?.slice(0, 3))
             return res
           }),
         supabase
           .from('sessions')
           .select('start_time, user_id', { count: 'exact', head: true })
-          .gte('start_time', sevenDaysAgo)
+          .gte('start_time', sevenDaysAgoStartISO)
+          .lt('start_time', todayStartISO)
           .then((res: any) => {
-            console.log('7d sessions data:', res.data?.slice(0, 3))
+            console.log('Last 7 days sessions data:', res.data?.slice(0, 3))
             return res
           }),
         supabase
           .from('sessions')
           .select('start_time, user_id', { count: 'exact', head: true })
-          .gte('start_time', thirtyDaysAgo)
+          .gte('start_time', thirtyDaysAgoStartISO)
+          .lt('start_time', todayStartISO)
           .then((res: any) => {
-            console.log('30d sessions data:', res.data?.slice(0, 3))
+            console.log('Last 30 days sessions data:', res.data?.slice(0, 3))
             return res
           })
       ])
@@ -137,14 +150,17 @@ export function Overview() {
       setError(null)
 
       const now = new Date()
-      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      // Calculate day boundaries
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000)
+      const sevenDaysAgoStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000)
+      const thirtyDaysAgoStart = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000)
       
-      console.log('Time ranges:', {
-        twentyFourHoursAgo: twentyFourHoursAgo.toISOString(),
-        sevenDaysAgo: sevenDaysAgo.toISOString(),
-        thirtyDaysAgo: thirtyDaysAgo.toISOString()
+      console.log('Time ranges (Day Boundaries):', {
+        yesterdayStart: yesterdayStart.toISOString(),
+        todayStart: todayStart.toISOString(),
+        sevenDaysAgo: sevenDaysAgoStart.toISOString(),
+        thirtyDaysAgo: thirtyDaysAgoStart.toISOString()
       })
 
       // Get total sessions count first
@@ -156,57 +172,70 @@ export function Overview() {
         console.warn('Error getting total sessions:', totalSessionsError)
       }
 
-      // Get session counts for each period using separate queries
+      // Get session counts for each day boundary period using separate queries
       const [
         sessionResult24h,
         sessionResult7d,
         sessionResult30d
       ] = await Promise.all([
-        supabase.from('sessions').select('*', { count: 'exact', head: true }).gte('start_time', twentyFourHoursAgo.toISOString()),
-        supabase.from('sessions').select('*', { count: 'exact', head: true }).gte('start_time', sevenDaysAgo.toISOString()),
-        supabase.from('sessions').select('*', { count: 'exact', head: true }).gte('start_time', thirtyDaysAgo.toISOString())
+        // Yesterday's sessions (yesterday 12AM to today 12AM)
+        supabase.from('sessions').select('*', { count: 'exact', head: true })
+          .gte('start_time', yesterdayStart.toISOString())
+          .lt('start_time', todayStart.toISOString()),
+        // Last 7 days sessions (7 days ago 12AM to today 12AM)
+        supabase.from('sessions').select('*', { count: 'exact', head: true })
+          .gte('start_time', sevenDaysAgoStart.toISOString())
+          .lt('start_time', todayStart.toISOString()),
+        // Last 30 days sessions (30 days ago 12AM to today 12AM)
+        supabase.from('sessions').select('*', { count: 'exact', head: true })
+          .gte('start_time', thirtyDaysAgoStart.toISOString())
+          .lt('start_time', todayStart.toISOString())
       ])
 
       // Watch for errors in each query
-      if (sessionResult24h.error) console.warn('24h sessions error:', sessionResult24h.error)
-      if (sessionResult7d.error) console.warn('7d sessions error:', sessionResult7d.error)
-      if (sessionResult30d.error) console.warn('30d sessions error:', sessionResult30d.error)
+      if (sessionResult24h.error) console.warn('Yesterday sessions error:', sessionResult24h.error)
+      if (sessionResult7d.error) console.warn('Last 7 days sessions error:', sessionResult7d.error)
+      if (sessionResult30d.error) console.warn('Last 30 days sessions error:', sessionResult30d.error)
 
       const sessionCount24h = sessionResult24h.count || 0
       const sessionCount7d = sessionResult7d.count || 0
       const sessionCount30d = sessionResult30d.count || 0
 
-      console.log('Session counts - 24h:', sessionCount24h, '7d:', sessionCount7d, '30d:', sessionCount30d)
+      console.log('Session counts - Yesterday:', sessionCount24h, 'Last 7 days:', sessionCount7d, 'Last 30 days:', sessionCount30d)
 
       // Also get sample sessions for unique user calculations
       const { data: last30DaysSessions } = await supabase
         .from('sessions')
         .select('user_id, start_time')
-        .gte('start_time', thirtyDaysAgo.toISOString())
+        .gte('start_time', thirtyDaysAgoStart.toISOString())
+        .lt('start_time', todayStart.toISOString())
 
-      // Get unique user counts for each period using direct Supabase queries
+      // Get unique user counts for each day boundary period using direct Supabase queries
       const [
         uniqueUsers24hResult,
         uniqueUsers7dResult,
         uniqueUsers30dResult
       ] = await Promise.all([
-        // Get DISTINCT users with session in last 24 hours
+        // Get DISTINCT users with sessions in yesterday
         supabase
           .from('sessions')
           .select('user_id', { count: 'exact' })
-          .gte('start_time', twentyFourHoursAgo.toISOString()),
+          .gte('start_time', yesterdayStart.toISOString())
+          .lt('start_time', todayStart.toISOString()),
           
-        // Get DISTINCT users with session in last 7 days
+        // Get DISTINCT users with sessions in last 7 days
         supabase
           .from('sessions')
           .select('user_id', { count: 'exact' })
-          .gte('start_time', sevenDaysAgo.toISOString()),
+          .gte('start_time', sevenDaysAgoStart.toISOString())
+          .lt('start_time', todayStart.toISOString()),
           
-        // Get DISTINCT users with session in last 30 days
+        // Get DISTINCT users with sessions in last 30 days
         supabase
           .from('sessions')
           .select('user_id', { count: 'exact' })
-          .gte('start_time', thirtyDaysAgo.toISOString())
+          .gte('start_time', thirtyDaysAgoStart.toISOString())
+          .lt('start_time', todayStart.toISOString())
       ])
 
       // Count unique users from each result
@@ -228,16 +257,20 @@ export function Overview() {
       const uniqueUsers7dFinal = uniqueUsers7d || Math.min(sessionCount7d, Math.ceil(sessionCount7d * 0.25))
       const uniqueUsers30dFinal = uniqueUsers30d || Math.min(sessionCount30d, Math.ceil(sessionCount30d * 0.12))
 
-      console.log('Unique users actual/proportional:', {
-        actual24h: uniqueUsers24h, final24h: uniqueUsers24hFinal,
-        actual7d: uniqueUsers7d, final7d: uniqueUsers7dFinal,
-        actual30d: uniqueUsers30d, final30d: uniqueUsers30dFinal
+      console.log('Unique users actual/proportional (Day Boundaries):', {
+        actualDay: uniqueUsers24h, finalDay: uniqueUsers24hFinal,
+        actualWeek: uniqueUsers7d, finalWeek: uniqueUsers7dFinal,
+        actualMonth: uniqueUsers30d, finalMonth: uniqueUsers30dFinal
       })
       
       // Get profile counts (learners & parents)
-      const [activeUsersPromise, userMarksResult, learnerResult, parentResult] = await Promise.all([
+      const [activeUsersPromise, userMarksResult, totalProfilesResult, learnerResult, parentResult] = await Promise.all([
         fetchActiveUsersByPeriod(),
         supabase.from('user_marks').select('*', { count: 'exact', head: true }),
+        
+        // Total users from profiles table
+        supabase.from('profiles')
+          .select('*', { count: 'exact', head: true }),
         
         // Count learners: COALESCE(is_parent, false) = false
         supabase.from('profiles')
@@ -258,7 +291,8 @@ export function Overview() {
 
       console.log('Total sessions all time:', totalSessionsCount)
       console.log('Sessions 24h:', sessionCount24h, '- 7d:', sessionCount7d, '- 30d:', sessionCount30d)
-      console.log('Total students:', userMarksResult.count)
+      console.log('Total students with marks:', userMarksResult.count)
+      console.log('Total user profiles:', totalProfilesResult.count)
       console.log('Learner count:', learnerResult.count)
       console.log('Parent count:', parentResult.count)
       console.log('Download stats:', downloadStats)
@@ -267,7 +301,9 @@ export function Overview() {
       const platforms = getPlatformDownloads(downloadStats.total_downloads)
       
       setStats({
-        total_users: userMarksResult.count || 2447,  // Total registered users
+        total_users: totalProfilesResult?.count || 0,  // Total registered users from profiles table
+        total_students_with_marks: userMarksResult.count || 0,  // Students who have entered marks
+        total_user_profiles: totalProfilesResult?.count || 0,  // Total users in profiles
         total_active_users: uniqueUsers30dFinal,  // Users actively using the system
         pct_ge_50: 48.6,
         pct_ge_70: 19.2,
@@ -281,11 +317,10 @@ export function Overview() {
         distinct_users_30d: uniqueUsers30dFinal,
         learner_count: learnerResult?.count || 2365,
         parent_count: parentResult?.count || 1,
-        // Initialize timeframe activity tracking for learners and parents based on active user data
-        // Note: Parent activity appears to be minimal or none per your observation
-        learners_active_24h: Math.max(1, Math.floor(uniqueUsers24hFinal * 0.7)),
-        learners_active_7d: Math.max(1, Math.floor(uniqueUsers7dFinal * 0.81)),
-        learners_active_30d: Math.max(200, uniqueUsers30dFinal * 0.9),
+        // Learner activity based on actual session data since users who are not parents are automatically learners
+        learners_active_24h: uniqueUsers24hFinal, // Same as activity overview (yesterday's active learners)
+        learners_active_7d: uniqueUsers7dFinal,   // Same as activity overview (last 7 days active learners)
+        learners_active_30d: uniqueUsers30dFinal, // Same as activity overview (last 30 days active learners)
         parents_active_24h: 0,  // No parent activity today
         parents_active_7d: 0,   // No parent activity this week
         parents_active_month: 1, // Just the registered parent count (no active sessions > 30d)
@@ -321,8 +356,8 @@ export function Overview() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Total Students"
-          value={stats?.total_users || 0}
-          subtitle="All student records"
+          value={stats?.total_students_with_marks || 0}
+          subtitle="Students who entered marks"
           icon={Users}
         />
         <KPICard
@@ -350,31 +385,31 @@ export function Overview() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <KPICard
             title="Total Users"
-            value={stats?.total_users || 0}
+            value={stats?.total_user_profiles || 0}
             subtitle="Registered students"
             icon={Users}
           />
           <KPICard
-            title="Active Today"
+            title="Active Yesterday"
             value={stats?.distinct_users_24h || 0}
-            subtitle="Unique users (24 hours)"
+            subtitle="Unique users (yesterday)"
             icon={Clock}
           />
           <KPICard
-            title="Active This Week"
+            title="Active Last 7 Days"
             value={stats?.distinct_users_7d || 0}
-            subtitle="Unique users (7 days)"
+            subtitle="Unique users (past 7 days)"
             icon={Calendar}
           />
           <KPICard
-            title="Active This Month"
+            title="Active Last 30 Days"
             value={stats?.distinct_users_30d || 0}
-            subtitle="Unique users (30 days)"
+            subtitle="Unique users (past 30 days)"
             icon={TrendingUpIcon}
           />
         </div>
         <div className="text-xs text-gray-500 text-center italic mt-4">
-          User counts reflect unique user IDs with sessions in period
+          User counts reflect unique user IDs with sessions in day periods (12AM to 12AM)
         </div>
       </div>
 
@@ -391,21 +426,21 @@ export function Overview() {
             icon={SingleUser}
           />
           <KPICard
-            title="Active Today"
+            title="Active Yesterday"
             value={stats?.learners_active_24h || 0}
-            subtitle="Learners (24 hours)"
+            subtitle="Learners (yesterday)"
             icon={Clock}
           />
           <KPICard
-            title="Active This Week"
+            title="Active Last 7 Days"
             value={stats?.learners_active_7d || 0}
-            subtitle="Learners (7 days)"
+            subtitle="Learners (past 7 days)"
             icon={Calendar}
           />
           <KPICard
-            title="Active This Month"
+            title="Active Last 30 Days"
             value={stats?.learners_active_30d || 0}
-            subtitle="Learners (30 days)"
+            subtitle="Learners (past 30 days)"
             icon={TrendingUpIcon}
           />
         </div>
@@ -419,15 +454,15 @@ export function Overview() {
             icon={Users2}
           />
           <KPICard
-            title="Active Today"
+            title="Active Yesterday"
             value={stats?.parents_active_24h || 0}
-            subtitle="Parents (24 hours)"
+            subtitle="Parents (yesterday)"
             icon={Clock}
           />
           <KPICard
-            title="Active This Week"
+            title="Active Last 7 Days"
             value={stats?.parents_active_7d || 0}
-            subtitle="Parents (7 days)"
+            subtitle="Parents (past 7 days)"
             icon={Calendar}
           />
           <KPICard
@@ -449,21 +484,21 @@ export function Overview() {
             icon={Activity}
           />
           <KPICard
-            title="Sessions Today"
+            title="Sessions Yesterday"
             value={stats?.total_sessions_24h || 0}
-            subtitle="Session count (24 hours)"
+            subtitle="Session count (yesterday)"
             icon={Clock}
           />
           <KPICard
-            title="Sessions This Week"
+            title="Sessions Last 7 Days"
             value={stats?.total_sessions_7d || 0}
-            subtitle="Session count (7 days)"
+            subtitle="Session count (past 7 days)"
             icon={Calendar}
           />
           <KPICard
-            title="Sessions This Month"
+            title="Sessions Last 30 Days"
             value={stats?.total_sessions_30d || 0}
-            subtitle="Session count (30 days)"
+            subtitle="Session count (past 30 days)"
             icon={TrendingUpIcon}
           />
         </div>
@@ -481,21 +516,21 @@ export function Overview() {
             icon={Download}
           />
           <KPICard
-            title="Downloads Today"
+            title="Downloads Yesterday"
             value={stats?.downloads_24h || 0}
-            subtitle="Downloads (24 hours)"
+            subtitle="Downloads (yesterday)"
             icon={Clock}
           />
           <KPICard
-            title="Downloads This Week"
+            title="Downloads Last 7 Days"
             value={stats?.downloads_7d || 0}
-            subtitle="Downloads (7 days)"
+            subtitle="Downloads (past 7 days)"
             icon={Calendar}
           />
           <KPICard
-            title="Downloads This Month"
+            title="Downloads Last 30 Days"
             value={stats?.downloads_30d || 0}
-            subtitle="Downloads (30 days)"
+            subtitle="Downloads (past 30 days)"
             icon={TrendingUpIcon}
           />
         </div>

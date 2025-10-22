@@ -36,12 +36,9 @@ export function Navigation({
     { id: "universities", label: "Universities", icon: GraduationCap },
     { id: "tvet", label: "TVET Colleges", icon: Building2 },
     { id: "matching-profiles", label: "Matching Profiles", icon: Target },
-    { id: "matches", label: "Matches", icon: Users },
-    { id: "active-users", label: "Active Users", icon: Activity },
     { id: "funding", label: "Funding", icon: DollarSign },
     { id: "institutions", label: "Institutions", icon: MapPin },
     { id: "session-health", label: "Session Health", icon: Activity },
-    { id: "engagement", label: "Engagement", icon: MousePointer },
     { id: "user-journey", label: "User Journey", icon: GitBranch },
     { id: "feature-adoption", label: "Feature Adoption", icon: Activity },
   ];
