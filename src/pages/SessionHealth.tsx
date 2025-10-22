@@ -39,6 +39,8 @@ interface RecentSession {
   end_time: string | null
   status: string
   duration_minutes: number
+  first_name?: string
+  last_name?: string
 }
 
 export function SessionHealth() {
@@ -64,6 +66,7 @@ export function SessionHealth() {
       const today = new Date()
       const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
 
+      // First fetch sessions
       const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .select('*')
@@ -71,6 +74,36 @@ export function SessionHealth() {
 
       if (sessionError) throw sessionError
       if (!sessionData) return
+
+      // Get unique user IDs from sessions to fetch profile data
+      const userIds = [...new Set(sessionData.map(session => session.user_id))]
+      
+      // Fetch user profile data including first_name and last_name
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('user_id, first_name, last_name')
+        .in('user_id', userIds)
+
+      if (profileError) console.warn('Failed to fetch profile data:', profileError)
+      
+      // Create a mapping of user_id to profile data for quick lookup
+      const profileMap: Record<string, { first_name?: string; last_name?: string }> = {}
+      if (profileData) {
+        profileData.forEach(profile => {
+          if (profile.user_id) {
+            profileMap[profile.user_id] = {
+              first_name: profile.first_name,
+              last_name: profile.last_name
+            }
+          }
+        })
+      }
+      console.log('📊 Session Analytics -', {
+        totalSessions: sessionData.length,
+        uniqueUsers: userIds.length,
+        totalProfiles: profileData?.length || 0,
+        sampleProfileData: profileData?.slice(0, 3)
+      })
 
       // Process data for stats
       const sessions = sessionData as Session[]
@@ -152,14 +185,19 @@ export function SessionHealth() {
       const recent = sessions
         .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
         .slice(0, 50)
-        .map(session => ({
-          session_id: session.session_id,
-          user_id: session.user_id,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          status: session.status,
-          duration_minutes: calculateSessionDuration(session.start_time, session.end_time)
-        }))
+        .map(session => {
+          const userProfile = profileMap[session.user_id]
+          return {
+            session_id: session.session_id,
+            user_id: session.user_id,
+            start_time: session.start_time,
+            end_time: session.end_time,
+            status: session.status,
+            duration_minutes: calculateSessionDuration(session.start_time, session.end_time),
+            first_name: userProfile?.first_name,
+            last_name: userProfile?.last_name
+          }
+        })
 
       setStats(realStats)
       setDailyData(sortedDaily)
@@ -178,6 +216,17 @@ export function SessionHealth() {
   const columns = [
     { key: 'session_id', label: 'Session ID' },
     { key: 'user_id', label: 'User ID' },
+    {
+      key: 'user_name',
+      label: 'User Name',
+      render: (_value: string, row: RecentSession) => {
+        const fullName = `${row.first_name || ''} ${row.last_name || ''}`.trim()
+        if (fullName && fullName !== ' ') {
+          return fullName
+        }
+        return <span className="text-gray-400">Unnamed User</span>
+      }
+    },
     {
       key: 'start_time',
       label: 'Start Time',

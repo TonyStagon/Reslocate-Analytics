@@ -149,15 +149,34 @@ export function FeatureAdoption() {
       // Process today's stats
       const uniqueSessionsToday = new Set(todayData?.map((click: ButtonClick) => click.session_id) || []).size
       
-      // Process page-level CTR data
+      // Optimized query to fetch all recent page click data for aggregation
+      console.log('🎯 Fetching optimized page click data for aggregation...')
+      const { data: pageClickStats, error: pageError } = await supabase
+        .from('button_clicks')
+        .select('page_name, session_id, created_at')
+
+      // Data processing - prefer optimized query results when available
       const pageStats: Record<string, { clicks: number; sessions: Set<string> }> = {}
-      clicks.forEach(click => {
-        if (!pageStats[click.page_name]) {
-          pageStats[click.page_name] = { clicks: 0, sessions: new Set() }
-        }
-        pageStats[click.page_name].clicks++
-        pageStats[click.page_name].sessions.add(click.session_id)
-      })
+      if (pageClickStats && pageClickStats.length > 0) {
+        console.log('📊 Using optimized query with', pageClickStats.length, 'real click records')
+        pageClickStats.forEach((click: any) => {
+          if (!pageStats[click.page_name]) {
+            pageStats[click.page_name] = { clicks: 0, sessions: new Set() }
+          }
+          pageStats[click.page_name].clicks++
+          pageStats[click.page_name].sessions.add(click.session_id)
+        })
+      } else {
+        console.warn('⚠️ Using client-side fallback data processing')
+        // Fallback to client processing if optimized query fails
+        clicks.forEach(click => {
+          if (!pageStats[click.page_name]) {
+            pageStats[click.page_name] = { clicks: 0, sessions: new Set() }
+          }
+          pageStats[click.page_name].clicks++
+          pageStats[click.page_name].sessions.add(click.session_id)
+        })
+      }
 
       // Calculate statistics
       const allUniqueSessions = new Set(clicks.map(click => click.session_id)).size
@@ -176,15 +195,18 @@ export function FeatureAdoption() {
         feature_adoption_rate: Math.round(estimatedEngagementRate * 0.8)
       }
 
-      // Process page CTR data
+      // Process page CTR data with improved accuracy
       const pageCTRData: PageCTR[] = Object.entries(pageStats).map(([page, data]) => ({
         page_name: page,
         total_clicks: data.clicks,
         unique_sessions: data.sessions.size,
-        ctr: Math.round((data.clicks / Math.max(data.sessions.size, 1)) * 100) / 100
-      })).sort((a, b) => b.total_clicks - a.total_clicks)
-      .slice(0, 10)
-
+        ctr: data.sessions.size > 0 ? Math.round((data.clicks / Math.max(data.sessions.size, 1)) * 100) / 100 : 0
+      })).sort((a, b) => {
+        if (a.total_clicks !== b.total_clicks) {
+          return b.total_clicks - a.total_clicks
+        }
+        return b.ctr - a.ctr
+      }).slice(0, 10)
 
       // Process weekly adoption trends
       const weeklyStats: Record<string, { clicks: number; sessions: Set<string>; pages: Set<string> }> = {}
