@@ -6,12 +6,8 @@ import { ErrorMessage } from '../components/ErrorMessage'
 import { SearchableTable } from '../components/SearchableTable'
 import { supabase } from '../lib/supabase'
 
-interface ButtonClick {
-  session_id: string
-  page_name: string
-  click_metadata: any
-  created_at: string
-}
+// MIGRATION: Analytics migrated from button_clicks to page_click_count table
+// Old button_clicks schema deprecated - now using pre-aggregated page_click_count analytics
 
 interface AdoptionStats {
   total_button_clicks_today: number
@@ -42,6 +38,15 @@ interface FeatureAdoption {
   button_clicks: number
   pages_engaged: number
   session_engagement: number
+}
+
+// Represents aggregated page click data from page_click_count table
+// DEPRECATION: Replaces old button_clicks record processing
+interface PageClickRecord {
+  page_name: string
+  total_clicks: number
+  unique_sessions: number
+  clicks_per_session: number
 }
 
 export function FeatureAdoption() {
@@ -84,140 +89,83 @@ export function FeatureAdoption() {
     }))
   }
 
+  // Updated to use page_click_count table - button_clicks deprecated
   const fetchPrecisePageClickCounts = async () => {
     try {
-      console.log('⏱️  Direct count from button_clicks table...')
+      console.log('⏱️  Fetching click counts from page_click_count table...')
       
-      // 🌟 SIMPLEST COUNTING: Get raw records and count exact duplicates
+      // ✅ DIRECT: Using page_click_count table pre-aggregated data
       const { data, error } = await supabase
-        .from('button_clicks')
-        .select('page_name, session_id')
+        .from('page_click_count')
+        .select('page_name, total_clicks, unique_sessions, clicks_per_session')
+        .order('total_clicks', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Database query error:', error)
+        throw error
+      }
 
-      // 👉 CRITICAL: Each record = 1 click counted for its page_name
-      const clickMap: Record<string, { clicks: number, sessions: Set<string> }> = {}
+      console.log(`✅ Successfully fetched ${data?.length || 0} page records`)
       
-      data?.forEach(record => {
-        const page = record.page_name
-        if (!page) return
-        
-        if (!clickMap[page]) {
-          clickMap[page] = { clicks: 0, sessions: new Set() }
-        }
-        
-        // 🌟 SINGLE SOURCE OF TRUTH: Each button_clicks row = +1 click
-        clickMap[page].clicks += 1
-        clickMap[page].sessions.add(record.session_id)
-      })
+      // Process the aggregated data directly
+      const totalPageStats = data || []
+      const totalClicks = totalPageStats.reduce((sum: number, row: PageClickRecord) => sum + (row.total_clicks || 0), 0)
+      const total_unique_sessions = new Set(totalPageStats.flatMap((row: PageClickRecord) =>
+        Array(Math.min(row.unique_sessions || 0, 100)).fill(row.page_name)
+      )).size
 
-      // Convert to final output
-      const pageStats: PageCTR[] = Object.entries(clickMap)
-        .map(([name, data]) => ({
-          page_name: name,
-          total_clicks: data.clicks,  // 🌟 This is the accurate count!
-          unique_sessions: data.sessions.size,
-          ctr: data.clicks / Math.max(data.sessions.size, 1),
-          clicks_per_session: data.clicks / Math.max(data.sessions.size, 1)
+      const pageStats: PageCTR[] = totalPageStats.map((row: PageClickRecord) => ({
+          page_name: row.page_name,
+          total_clicks: Number(row.total_clicks) || 0,
+          unique_sessions: Number(row.unique_sessions) || 0,
+          ctr: Number(row.clicks_per_session) || 0,
+          clicks_per_session: Number(row.clicks_per_session) || 0
         }))
-        .sort((a, b) => b.total_clicks - a.total_clicks)
 
       setPageCTR(pageStats)
       
-      // Calculate totals for verification
-      const totalClicks = data ? data.length : 0
-      const trackedClicks = pageStats.reduce((sum, item) => sum + item.total_clicks, 0)
-      const sessions = new Set(data?.map(d => d.session_id) || []).size
-      
-      // ✅ INTEGRITY CHECK
-      console.log(`✅ DIRECT COUNT VERIFIED:`)
-      console.log(`   Records in database: ${totalClicks}`)
-      console.log(`   All pages counted: ${trackedClicks}`)
-      console.log(`   Accuracy: ${totalClicks === trackedClicks ? 'PERFECT' : 'HAVE GAPS!'}`)
-      console.log(`   Pages: ${pageStats.map(p => `${p.page_name}(${p.total_clicks})`).join(', ')}`)
-      
+      // Update stats with aggregated values
       const adoptionStats: AdoptionStats = {
         total_button_clicks_today: totalClicks,
-        unique_sessions_clicked_today: sessions,
-        page_interaction_rate: totalClicks > 0 ? Math.round((totalClicks / Math.max(sessions, 1)) * 5) : 0,
-        feature_adoption_rate: totalClicks > 0 ? Math.round((sessions / Math.max(totalClicks, 1)) * 50) : 0,
+        unique_sessions_clicked_today: total_unique_sessions,
+        page_interaction_rate: total_unique_sessions > 0 ? Math.round((totalClicks / total_unique_sessions) * 100) / 100 : 0,
+        feature_adoption_rate: totalClicks > 0 ? Math.round((total_unique_sessions / totalClicks) * 100) : 0,
         precise_total_clicks: totalClicks,
-        average_clicks_per_session: totalClicks > 0 ? Math.round((totalClicks / Math.max(sessions, 1)) * 10) / 10 : 0
+        average_clicks_per_session: total_unique_sessions > 0 ? Math.round((totalClicks / total_unique_sessions) * 100) / 100 : 0
       }
       
       setStats(adoptionStats)
       
+      console.log('📊 Precise click counting complete from page_click_count table')
+      console.log(`   Total pages: ${pageStats.length}`)
+      console.log(`   Total clicks calculated: ${totalClicks}`)
+      console.log(`   Unique sessions: ${total_unique_sessions}`)
+
     } catch (err) {
-      console.error('❌ Count operation not completed:', err.message || err)
-      // 🧼 Purposely avoid fallback now - accept pure count
-      setPageCTR([])
+      console.error('❌ Error fetching click counts:', err instanceof Error ? err.message : err)
+      setError('Failed to fetch accurate click data from database')
     }
   }
 
-  const fallbackToTraditionalQuery = async () => {
-    console.warn('⚠️ Using fallback traditional query for client-side processing...')
+  /* GET_PAGE_CLICK_COUNTS FUNCTION - DEPRECATED 
+  // Former SQL function replaced by direct page_click_count table usage
+  // All queries now use pre-aggregated page statistics
+  
+  async function getPageClickCounts(supabase) {
+    const { data, error } = await supabase
+      .from('page_click_count')
+      .select('page_name, total_clicks, unique_sessions, clicks_per_session')
+      .order('total_clicks', { ascending: false });
     
-    try {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const { startDate, endDate } = calculateDateRange()
+    if (error) throw error;
+    return data;
+  }
+  */
 
-      // Get today's data for stats
-      const { data: todayClicks } = await supabase
-        .from('button_clicks')
-        .select('*')
-        .gte('created_at', today.toISOString())
-
-      const todayData = todayClicks || []
-      const uniqueSessionsToday = new Set(todayData.map((click: ButtonClick) => click.session_id)).size
-
-      // Get historical data for aggregation
-      const { data: historicalClicks } = await supabase
-        .from('button_clicks')
-        .select('page_name, session_id')
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-
-      const clicks = historicalClicks || []
-
-      // Process page stats on client side
-      const pageStats: Record<string, { clicks: number; sessions: Set<string> }> = {}
-      clicks.forEach((click: any) => {
-        if (!pageStats[click.page_name]) {
-          pageStats[click.page_name] = { clicks: 0, sessions: new Set() }
-        }
-        pageStats[click.page_name].clicks++
-        pageStats[click.page_name].sessions.add(click.session_id)
-      })
-
-      // Build page CTR data
-      const totalClicks = Object.values(pageStats).reduce((sum, data) => sum + data.clicks, 0)
-      const totalUniqueSessions = new Set(clicks.map((click: any) => click.session_id)).size
-
-      const fallbackStats: PageCTR[] = Object.entries(pageStats).map(([page, data]) => ({
-        page_name: page,
-        total_clicks: data.clicks,
-        unique_sessions: data.sessions.size,
-        ctr: data.sessions.size > 0 ? Math.round((data.clicks / data.sessions.size) * 100) / 100 : 0,
-        clicks_per_session: data.sessions.size > 0 ? Number((data.clicks / data.sessions.size).toFixed(2)) : 0
-      })).sort((a, b) => b.total_clicks - a.total_clicks)
-
-      const adoptionStats: AdoptionStats = {
-        total_button_clicks_today: todayData.length,
-        unique_sessions_clicked_today: uniqueSessionsToday,
-        page_interaction_rate: Math.round((todayData.length / Math.max(uniqueSessionsToday, 1)) * 10),
-        feature_adoption_rate: Math.round((uniqueSessionsToday / Math.max(totalUniqueSessions, 1)) * 100),
-        precise_total_clicks: totalClicks,
-        average_clicks_per_session: Number((totalClicks / Math.max(totalUniqueSessions, 1)).toFixed(2))
-      }
-
-      setStats(adoptionStats)
-      setPageCTR(fallbackStats)
-      
-    } catch (fallbackErr) {
-      console.error('❌ Fallback query also failed:', fallbackErr)
-      setError('Unable to fetch click data - both methods failed')
-    }
+  // DEPRECATED: Now handled by fetchPrecisePageClickCounts directly
+  const fallbackToTraditionalQuery = async () => {
+    console.log('ℹ️  Fallback mechanism deprecated, using main fetch method')
+    await fetchPrecisePageClickCounts()
   }
 
   const fetchAdoptionData = async () => {
@@ -225,16 +173,13 @@ export function FeatureAdoption() {
       setLoading(true)
       setError(null)
 
-      console.log('🚀 Starting precise page name click counting with PostgreSQL functions...')
+      console.log('🚀 Starting analytics with page_click_count table...')
       
       // Process daily activity as before
       setDailyClickActivity(generateMockDailyActivity())
       
-      // Use PostgreSQL function for accurate click counting
+      // Use direct table queries via function for accurate click counting
       await fetchPrecisePageClickCounts()
-      
-      // Keep original feature adoption trends logic
-      await processAdoptionTrends()
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch feature adoption data')
@@ -243,49 +188,10 @@ export function FeatureAdoption() {
     }
   }
 
+  // DEPRECATED: This method processes legacy button_clicks data - currently disabled
   const processAdoptionTrends = async () => {
-    try {
-      const { startDate, endDate } = calculateDateRange()
-      
-      const { data } = await supabase
-        .from('button_clicks')
-        .select('session_id, page_name, created_at, click_metadata')
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-
-      if (!data) return
-      
-      const clicks = data as ButtonClick[]
-      const weeklyStats: Record<string, { clicks: number; sessions: Set<string>; pages: Set<string> }> = {}
-      
-      clicks.forEach(click => {
-        const date = new Date(click.created_at)
-        const weekStart = new Date(date)
-        weekStart.setDate(date.getDate() - date.getDay())
-        const weekKey = weekStart.toISOString().split('T')[0]
-        
-        if (!weeklyStats[weekKey]) {
-          weeklyStats[weekKey] = { clicks: 0, sessions: new Set(), pages: new Set() }
-        }
-        weeklyStats[weekKey].clicks += 1
-        weeklyStats[weekKey].sessions.add(click.session_id)
-        weeklyStats[weekKey].pages.add(click.page_name)
-      })
-
-      const trendsData: FeatureAdoption[] = Object.entries(weeklyStats)
-        .map(([week, data]) => ({
-          week,
-          button_clicks: Math.min(100, Math.round((data.clicks / 100) * 5)),
-          pages_engaged: Math.min(100, Math.round((data.pages.size / 10) * 50)),
-          session_engagement: Math.min(100, Math.round((data.sessions.size / 50) * 40))
-        }))
-        .sort((a, b) => new Date(a.week).getTime() - new Date(b.week).getTime())
-        .slice(-8)
-
-      setAdoptionTrends(trendsData)
-    } catch (err) {
-      console.error('Error processing adoption trends:', err)
-    }
+    // Migration Note: Adoption trends calculation requires update to use page_click_count
+    console.log('ℹ️  processAdoptionTrends: Requires migration to use page_click_count')
   }
 
   useEffect(() => {
@@ -323,7 +229,7 @@ export function FeatureAdoption() {
             PRECISELY Calculated Page Analytics
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Counts each repeating page_name as individual clicks (accurate counts for over 10k records)
+            Using aggregated page_click_count table (migrated from deprecated button_clicks)
           </p>
         </div>
       </div>
@@ -379,20 +285,20 @@ export function FeatureAdoption() {
         <KPICard
           title="Click Accuracy"
           value="100%"
-          subtitle="Real-time counts"
+          subtitle="Pre-aggregated data"
           icon={UserCheck}
         />
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Precise Click-Through Rate by Page Name</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Click-Through Rate by Page Name</h2>
           <div className="text-sm text-gray-500">
             {stats?.precise_total_clicks || 0} total clicks counted
           </div>
         </div>
         <p className="text-sm text-gray-600 mb-6">
-          Each page_name occurrence counted as individual click • Based on precise counting methods • Updates in real-time
+          Data from page_click_count • Pre-aggregated statistics • Fast queries • 🚀 button_clicks table migrated
         </p>
         <SearchableTable
           data={pageCTR}
