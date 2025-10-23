@@ -76,9 +76,15 @@ export function SessionHealth() {
       if (!sessionData) return
 
       // Get unique user IDs from sessions to fetch profile data
-      const userIds = [...new Set(sessionData.map(session => session.user_id))]
+      const userIds = [...new Set(sessionData.map((session: Session) => session.user_id))]
       
       // Fetch user profile data including first_name and last_name
+      interface Profile {
+        user_id: string
+        first_name?: string
+        last_name?: string
+      }
+
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('user_id, first_name, last_name')
@@ -89,7 +95,7 @@ export function SessionHealth() {
       // Create a mapping of user_id to profile data for quick lookup
       const profileMap: Record<string, { first_name?: string; last_name?: string }> = {}
       if (profileData) {
-        profileData.forEach(profile => {
+        profileData.forEach((profile: Profile) => {
           if (profile.user_id) {
             profileMap[profile.user_id] = {
               first_name: profile.first_name,
@@ -109,15 +115,15 @@ export function SessionHealth() {
       const sessions = sessionData as Session[]
       
       // Active sessions (without end_time)
-      const activeSessions = sessions.filter(s => !s.end_time)
+      const activeSessions = sessions.filter((s: Session) => !s.end_time)
       
       // Sessions from today
-      const sessionsToday = sessions.filter(s =>
+      const sessionsToday = sessions.filter((s: Session) =>
         new Date(s.start_time).toDateString() === today.toDateString()
       )
       
       // Completed sessions (with end_time)
-      const completedSessions = sessions.filter(s => {
+      const completedSessions = sessions.filter((s: Session) => {
         if (!s.end_time) return false
         const duration = calculateSessionDuration(s.start_time, s.end_time)
         return s.end_time && duration > 0
@@ -125,13 +131,13 @@ export function SessionHealth() {
       
       // Calculate average duration (from completed sessions)
       const avgDuration = completedSessions.length > 0
-        ? completedSessions.reduce((sum, s) =>
+        ? completedSessions.reduce((sum, s: Session) =>
             sum + calculateSessionDuration(s.start_time, s.end_time!), 0) / completedSessions.length
         : 0
       
       // Calculate crash/disconnect rates
-      const crashedSessions = sessions.filter(s => s.status === 'crashed')
-      const disconnectedSessions = sessions.filter(s => s.status === 'disconnected')
+      const crashedSessions = sessions.filter((s: Session) => s.status === 'crashed')
+      const disconnectedSessions = sessions.filter((s: Session) => s.status === 'disconnected')
       const crashRate = completedSessions.length > 0
         ? (crashedSessions.length / completedSessions.length) * 100
         : 0
@@ -150,7 +156,7 @@ export function SessionHealth() {
 
       // Build daily data
       const dailySessions: Record<string, DailySessionData> = {}
-      sessions.forEach(session => {
+      sessions.forEach((session: Session) => {
         const date = new Date(session.start_time).toISOString().split('T')[0]
         if (!dailySessions[date]) {
           dailySessions[date] = {
@@ -183,9 +189,9 @@ export function SessionHealth() {
 
       // Prepare recent sessions for table
       const recent = sessions
-        .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
+        .sort((a: Session, b: Session) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
         .slice(0, 50)
-        .map(session => {
+        .map((session: Session) => {
           const userProfile = profileMap[session.user_id]
           return {
             session_id: session.session_id,
@@ -334,7 +340,7 @@ export function SessionHealth() {
             Daily Sessions by Status (Last 7 Days)
           </h2>
           <div className="space-y-3">
-            {dailyData.map((day, index) => {
+            {dailyData.map((day: DailySessionData, index: number) => {
               const total = day.completed + day.active + day.disconnected + day.crashed
               return (
                 <div key={day.date} className="flex items-center space-x-4">
@@ -419,7 +425,7 @@ export function SessionHealth() {
           <div className="space-y-3">
             {(() => {
               // Calculate duration distribution from real data
-              const completedWithDuration = recentSessions.filter(s => s.duration_minutes > 0)
+              const completedWithDuration = recentSessions.filter((s: RecentSession) => s.duration_minutes > 0)
               const durationBuckets = [
                 { range: '0-5 min', min: 0, max: 5 },
                 { range: '5-15 min', min: 5, max: 15 },
@@ -428,19 +434,19 @@ export function SessionHealth() {
                 { range: '60+ min', min: 60, max: Infinity }
               ]
               
-              const counts = durationBuckets.map(bucket => ({
+              const counts = durationBuckets.map((bucket: { range: string; min: number; max: number }) => ({
                 range: bucket.range,
-                count: completedWithDuration.filter(s =>
+                count: completedWithDuration.filter((s: RecentSession) =>
                   s.duration_minutes > bucket.min && s.duration_minutes <= bucket.max
                 ).length
               }))
               
-              const totalCompleted = counts.reduce((sum, bucket) => sum + bucket.count, 0)
+              const totalCompleted = counts.reduce((sum, bucket: { count: number }) => sum + bucket.count, 0)
               
               return counts.map(bucket => ({
                 ...bucket,
                 percentage: totalCompleted > 0 ? Math.round((bucket.count / totalCompleted) * 100) : 0
-              })).map(bucket => (
+              })).map((bucket: { range: string; count: number; percentage: number }) => (
                 <div key={bucket.range} className="flex items-center space-x-4">
                   <div className="w-20 text-sm font-medium text-gray-700">{bucket.range}</div>
                   <div className="flex-1">
@@ -457,7 +463,7 @@ export function SessionHealth() {
                 </div>
               ))
             })()}
-            {recentSessions.filter(s => s.duration_minutes > 0).length === 0 && (
+            {recentSessions.filter((s: RecentSession) => s.duration_minutes > 0).length === 0 && (
               <div className="text-center text-gray-500 py-8">
                 <Clock className="mx-auto h-12 w-12 mb-2 opacity-50" />
                 <p>No completed sessions with duration data available</p>
