@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Users, TrendingUp, Award, GraduationCap, UserCheck, User, Clock, Calendar, TrendingUp as TrendingUpIcon, Activity, User as SingleUser, Users as Users2, Download, Smartphone } from 'lucide-react'
+import { Users, TrendingUp, Award, GraduationCap, UserCheck, User, Clock, Calendar, TrendingUp as TrendingUpIcon, Activity, User as SingleUser, Users as Users2, Download } from 'lucide-react'
 import { KPICard } from '../components/KPICard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { supabase } from '../lib/supabase'
-import { fetchDownloadStats, getPlatformDownloads } from '../utils/downloadStats'
+import { fetchDownloadStats } from '../utils/downloadStats'
 
 interface ActiveUsersData {
   active_24h: number
@@ -37,11 +37,6 @@ interface OverviewStats {
   parents_active_month: number     // Parents engaged this month
   // Downloads overview
   total_downloads: number
-  downloads_24h: number
-  downloads_7d: number
-  downloads_30d: number
-  android_downloads: number
-  ios_downloads: number
 }
 
 export function Overview() {
@@ -298,8 +293,6 @@ export function Overview() {
       console.log('Download stats:', downloadStats)
 
       // Set final statistics with accurate session counts and download data
-      const platforms = getPlatformDownloads(downloadStats.total_downloads)
-      
       setStats({
         total_users: totalProfilesResult?.count || 0,  // Total registered users from profiles table
         total_students_with_marks: userMarksResult.count || 0,  // Students who have entered marks
@@ -325,12 +318,7 @@ export function Overview() {
         parents_active_7d: 0,   // No parent activity this week
         parents_active_month: 1, // Just the registered parent count (no active sessions > 30d)
         // Download statistics from database or fallback
-        total_downloads: downloadStats.total_downloads,
-        downloads_24h: downloadStats.downloads_24h,
-        downloads_7d: downloadStats.downloads_7d,
-        downloads_30d: downloadStats.downloads_30d,
-        android_downloads: downloadStats.android_downloads,
-        ios_downloads: downloadStats.ios_downloads
+        total_downloads: downloadStats.total_downloads
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load statistics')
@@ -507,57 +495,14 @@ export function Overview() {
       <div className="pt-8 border-t border-gray-200">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Downloads Overview</h2>
         
-        {/* Row 1: Total Downloads & Time-based Downloads */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        {/* Single Card: Total Downloads */}
+        <div className="grid grid-cols-1 gap-6">
           <KPICard
             title="Total Downloads"
             value={stats?.total_downloads || 0}
             subtitle="App downloads all time"
             icon={Download}
           />
-          <KPICard
-            title="Downloads Yesterday"
-            value={stats?.downloads_24h || 0}
-            subtitle="Downloads (yesterday)"
-            icon={Clock}
-          />
-          <KPICard
-            title="Downloads Last 7 Days"
-            value={stats?.downloads_7d || 0}
-            subtitle="Downloads (past 7 days)"
-            icon={Calendar}
-          />
-          <KPICard
-            title="Downloads Last 30 Days"
-            value={stats?.downloads_30d || 0}
-            subtitle="Downloads (past 30 days)"
-            icon={TrendingUpIcon}
-          />
-        </div>
-
-        {/* Row 2: Platform Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <KPICard
-            title="Android Downloads"
-            value={stats?.android_downloads || 0}
-            subtitle={stats?.android_downloads ? `${Math.round(((stats.android_downloads || 0) / (stats.total_downloads || 1)) * 100)}% of total` : "Google Play Store"}
-            icon={Smartphone}
-          />
-          <KPICard
-            title="iOS Downloads"
-            value={stats?.ios_downloads || 0}
-            subtitle={stats?.ios_downloads ? `${Math.round(((stats.ios_downloads || 0) / (stats.total_downloads || 1)) * 100)}% of total` : "Apple App Store"}
-            icon={Smartphone}
-          />
-        </div>
-        <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
-          <div className="flex items-center text-sm font-medium text-gray-700 items-center justify-center">
-            <TrendingUpIcon className="h-4 w-4 mr-2 text-green-600" />
-            <span>
-              {stats?.total_downloads ? Math.round(((stats?.total_downloads || 0) / (stats?.total_users || 1)) * 100) : 0}%
-              conversion rate (Registered users with app downloaded)
-            </span>
-          </div>
         </div>
       </div>
     </div>
