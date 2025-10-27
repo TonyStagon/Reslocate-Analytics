@@ -30,13 +30,8 @@ CREATE TABLE IF NOT EXISTS download_stats (
   date date UNIQUE NOT NULL DEFAULT CURRENT_DATE,
   total_downloads integer DEFAULT 0,
   daily_downloads integer DEFAULT 0,
-  android_downloads integer DEFAULT 0,
-  ios_downloads integer DEFAULT 0,
-  rating numeric(2,1) DEFAULT 0.0,
-  reviews_count integer DEFAULT 0,
-  source text DEFAULT 'manual',
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
+  updated_at timestamptz DEFAULT now(),
+  created_at timestamptz DEFAULT now()
 );
 
 ALTER TABLE download_stats ENABLE ROW LEVEL SECURITY;
@@ -62,8 +57,7 @@ CREATE POLICY "Authenticated users can update download statistics"
 CREATE INDEX IF NOT EXISTS idx_download_stats_date ON download_stats(date DESC);
 CREATE INDEX IF NOT EXISTS idx_download_stats_created_at ON download_stats(created_at DESC);
 
--- Insert initial data based on your Play Store page (1,000+ downloads range)
--- You can update these values with actual data from Play Console
-INSERT INTO download_stats (date, total_downloads, daily_downloads, android_downloads, ios_downloads, rating, reviews_count, source)
-VALUES (CURRENT_DATE, 1200, 45, 900, 300, 4.2, 32, 'manual')
+-- Insert sample total download data (simplified from complex platform breakdown)
+INSERT INTO download_stats (date, total_downloads, daily_downloads)
+VALUES (CURRENT_DATE, 4219, 87)
 ON CONFLICT (date) DO NOTHING;
