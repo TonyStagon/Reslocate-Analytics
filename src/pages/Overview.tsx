@@ -530,41 +530,6 @@ export function Overview() {
             icon={Calendar}
           />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-          <KPICard
-            title="Daily Growth Rate"
-            value={`${(() => {
-              const avgDaily7d = (stats?.parents_active_7d || 0) / 7
-              const yesterday = stats?.parents_active_24h || 0
-              if (avgDaily7d === 0) return '0.0'
-              return (((yesterday - avgDaily7d) / avgDaily7d) * 100).toFixed(1)
-            })()}%`}
-            subtitle="Yesterday vs 7-day avg"
-            icon={TrendingUpIcon}
-          />
-          <KPICard
-            title="Weekly Growth Rate"
-            value={`${(() => {
-              const avgDaily7d = (stats?.parents_active_7d || 0) / 7
-              const avgDaily30d = (stats?.parents_active_month || 0) / 30
-              if (avgDaily30d === 0) return '0.0'
-              return (((avgDaily7d - avgDaily30d) / avgDaily30d) * 100).toFixed(1)
-            })()}%`}
-            subtitle="7-day avg vs 30-day avg"
-            icon={TrendingUpIcon}
-          />
-          <KPICard
-            title="Monthly Growth Rate"
-            value={`${(() => {
-              const avgDaily30d = (stats?.parents_active_month || 0) / 30
-              const avgDaily7d = (stats?.parents_active_7d || 0) / 7
-              if (avgDaily30d === 0) return '0.0'
-              return (((avgDaily7d - avgDaily30d) / avgDaily30d) * 100).toFixed(1)
-            })()}%`}
-            subtitle="Recent 7-day avg vs 30-day avg"
-            icon={TrendingUpIcon}
-          />
-        </div>
       </div>
 
       <div className="pt-8 border-t border-gray-200">
@@ -592,41 +557,6 @@ export function Overview() {
             title="Sessions Last 30 Days"
             value={stats?.total_sessions_30d || 0}
             subtitle="Session count (past 30 days)"
-            icon={TrendingUpIcon}
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-          <KPICard
-            title="Daily Growth Rate"
-            value={`${(() => {
-              const avgDaily7d = (stats?.total_sessions_7d || 0) / 7
-              const yesterday = stats?.total_sessions_24h || 0
-              if (avgDaily7d === 0) return '0.0'
-              return (((yesterday - avgDaily7d) / avgDaily7d) * 100).toFixed(1)
-            })()}%`}
-            subtitle="Yesterday vs 7-day avg"
-            icon={TrendingUpIcon}
-          />
-          <KPICard
-            title="Weekly Growth Rate"
-            value={`${(() => {
-              const avgDaily7d = (stats?.total_sessions_7d || 0) / 7
-              const avgDaily30d = (stats?.total_sessions_30d || 0) / 30
-              if (avgDaily30d === 0) return '0.0'
-              return (((avgDaily7d - avgDaily30d) / avgDaily30d) * 100).toFixed(1)
-            })()}%`}
-            subtitle="7-day avg vs 30-day avg"
-            icon={TrendingUpIcon}
-          />
-          <KPICard
-            title="Monthly Growth Rate"
-            value={`${(() => {
-              const avgDaily30d = (stats?.total_sessions_30d || 0) / 30
-              const avgDaily7d = (stats?.total_sessions_7d || 0) / 7
-              if (avgDaily30d === 0) return '0.0'
-              return (((avgDaily7d - avgDaily30d) / avgDaily30d) * 100).toFixed(1)
-            })()}%`}
-            subtitle="Recent 7-day avg vs 30-day avg"
             icon={TrendingUpIcon}
           />
         </div>
