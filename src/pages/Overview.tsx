@@ -597,10 +597,11 @@ export function Overview() {
         </div>
       </div>
 
-      <div className="pt-8 border-t border-gray-200">
+      {/* Downloads Overview - Temporarily Disabled */}
+{/*       <div className="pt-8 border-t border-gray-200">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Downloads Overview</h2>
         
-        {/* Single Card: Total Downloads */}
+        {/* Single Card: Total Downloads *\/}
         <div className="grid grid-cols-1 gap-6">
           <KPICard
             title="Total Downloads"
@@ -609,7 +610,7 @@ export function Overview() {
             icon={Download}
           />
         </div>
-      </div>
+      </div> */}
     </div>
   )
 }
