@@ -98,6 +98,9 @@ export interface Session {
   user_id: string;
   start_time: string;
   end_time?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Additional database table interfaces can be added here as needed

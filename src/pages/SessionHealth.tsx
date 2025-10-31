@@ -34,6 +34,7 @@ interface DailySessionData {
 
 interface RecentSession {
   session_id: string
+  user_id: string
   start_time: string
   end_time: string | null
   status: string
@@ -159,6 +160,7 @@ export function SessionHealth() {
         .slice(0, 50)
         .map((session: Session) => ({
           session_id: session.session_id,
+          user_id: session.user_id,
           start_time: session.start_time,
           end_time: session.end_time,
           status: session.status,
@@ -181,6 +183,7 @@ export function SessionHealth() {
 
   const columns = [
     { key: 'session_id', label: 'Session ID' },
+    { key: 'user_id', label: 'User ID' },
     {
       key: 'start_time',
       label: 'Start Time',
