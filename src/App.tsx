@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Layout } from "./components/Layout";
 import { Navigation } from "./components/Navigation";
 import { Overview } from "./pages/Overview";
@@ -11,9 +12,35 @@ import { Engagement } from "./pages/Engagement";
 import { UserJourney } from "./pages/UserJourney";
 import { FeatureAdoption } from "./pages/FeatureAdoption";
 import { MatchingProfiles } from "./pages/MatchingProfiles";
+import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
+import { LoadingSpinner } from "./components/LoadingSpinner";
 
-function App() {
+function AppContent() {
   const [currentPage, setCurrentPage] = useState("overview");
+  const [authView, setAuthView] = useState<"login" | "register" | null>(null);
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user) {
+    if (authView === "register") {
+      return (
+        <Register
+          onRegisterSuccess={() => setAuthView("login")}
+          onSwitchToLogin={() => setAuthView("login")}
+        />
+      );
+    }
+    return (
+      <Login
+        onLoginSuccess={() => setAuthView(null)}
+        onSwitchToRegister={() => setAuthView("register")}
+      />
+    );
+  }
 
   const renderCurrentPage = () => {
     switch (currentPage) {
@@ -49,6 +76,14 @@ function App() {
         {renderCurrentPage()}
       </main>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

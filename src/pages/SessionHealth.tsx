@@ -6,6 +6,7 @@ import { ErrorMessage } from '../components/ErrorMessage'
 import { SearchableTable } from '../components/SearchableTable'
 import { supabase } from '../lib/supabase'
 
+
 // Types that match your Supabase session table schema
 interface Session {
   session_id: string
