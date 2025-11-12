@@ -12,6 +12,7 @@ import { Engagement } from "./pages/Engagement";
 import { UserJourney } from "./pages/UserJourney";
 import { FeatureAdoption } from "./pages/FeatureAdoption";
 import { MatchingProfiles } from "./pages/MatchingProfiles";
+import { UserManagement } from "./pages/UserManagement";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { LoadingSpinner } from "./components/LoadingSpinner";
@@ -64,6 +65,8 @@ function AppContent() {
         return <FeatureAdoption />;
       case "matching-profiles":
         return <MatchingProfiles />;
+      case "user-management":
+        return <UserManagement />;
       default:
         return <Overview />;
     }
