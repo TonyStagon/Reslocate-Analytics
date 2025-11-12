@@ -99,6 +99,27 @@ export async function createUserWithEmail(
       console.log('✅ Profile created successfully')
     }
 
+    // Insert into AddedEmail table to track user creation
+    const addedEmailData = {
+      email: email.toLowerCase(),
+      first_name: profileData?.first_name || null,
+      last_name: profileData?.last_name || null,
+      created_by: authData.user.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    const { error: addedEmailError } = await supabase
+      .from('AddedEmail')
+      .insert(addedEmailData)
+
+    if (addedEmailError) {
+      console.warn('⚠️ AddedEmail tracking warning:', addedEmailError)
+      // Don't throw here since user was created successfully
+    } else {
+      console.log('✅ AddedEmail record created successfully')
+    }
+
     return { user: authData.user }
   } catch (error: any) {
     console.error('❌ User Creation Error:', error)
