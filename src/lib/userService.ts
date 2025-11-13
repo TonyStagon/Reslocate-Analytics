@@ -120,7 +120,7 @@ export async function createUserWithEmail(
 
     // Use upsert instead of insert to handle existing emails gracefully
     const { data: insertedEmail, error: addedEmailError } = await supabase
-      .from('public.AddedEmail')
+      .from('addedemail')
       .upsert(addedEmailData, {
         onConflict: 'email',
         ignoreDuplicates: false
@@ -261,7 +261,7 @@ export async function addEmailToAddedEmail(email: string, firstName?: string, la
     }
 
     const { data: insertedEmail, error } = await supabase
-      .from('public.AddedEmail')
+      .from('addedemail')
       .upsert(addedEmailData, {
         onConflict: 'email',
         ignoreDuplicates: false
@@ -299,7 +299,7 @@ export async function getAllAddedEmails(): Promise<AddedEmail[]> {
     console.log('📝 Fetching all added emails...')
     
     const { data: addedEmails, error } = await supabase
-      .from('public.AddedEmail')
+      .from('addedemail')
       .select('*')
       .order('created_at', { ascending: false })
 
