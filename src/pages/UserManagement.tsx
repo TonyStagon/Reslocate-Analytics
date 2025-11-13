@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2 } from 'lucide-react'
 import { createUserWithEmail, generatePassword, getRecentUsers, copyToClipboard, updateUserProfile, getUserProfile, addEmailToAddedEmail, getAllAddedEmails } from '../lib/userService'
-import { Profile } from '../types/database'
+import type { Profile } from '../types/database'
 import { AddedEmail } from '../lib/userService'
 
 interface UserData {

@@ -1,0 +1,6 @@
+id,email,first_name,last_name,created_by,created_at,updated_at
+1,john.doe@example.com,John,Doe,system-user,2024-11-12T10:00:00Z,2024-11-12T10:00:00Z
+2,jane.smith@example.com,Jane,Smith,admin-user,2024-11-12T10:30:00Z,2024-11-12T10:30:00Z
+3,mike.wilson@example.com,Mike,Wilson,system-user,2024-11-12T11:00:00Z,2024-11-12T11:00:00Z
+4,sarah.jones@example.com,Sarah,Jones,admin-user,2024-11-12T11:30:00Z,2024-11-12T11:30:00Z
+5,david.brown@example.com,David,Brown,system-user,2024-11-12T12:00:00Z,2024-11-12T12:00:00Z

@@ -118,15 +118,35 @@ export async function createUserWithEmail(
       updated_at: new Date().toISOString()
     }
 
-    const { error: addedEmailError } = await supabase
-      .from('AddedEmail')
-      .insert(addedEmailData)
+    // Use upsert instead of insert to handle existing emails gracefully
+    const { data: insertedEmail, error: addedEmailError } = await supabase
+      .from('public.AddedEmail')
+      .upsert(addedEmailData, {
+        onConflict: 'email',
+        ignoreDuplicates: false
+      })
+      .select('id, email')
+      .single()
 
     if (addedEmailError) {
       console.warn('⚠️ AddedEmail tracking warning:', addedEmailError)
+      console.log('❌ Raw AddedEmail insert error details:', JSON.stringify(addedEmailError))
+      
+      // Check if it's a duplicate error
+      if (addedEmailError.code === '23505') {
+        console.log(`ℹ️ CONFLICT: Email ${email.toLowerCase()} violates unique constraint`)
+        console.log(`🔍 Constraint details:`, addedEmailError.details)
+      } else {
+        console.log('❌ Failed to add email to AddedEmail table - Full error dump:')
+        console.log('Error Code:', addedEmailError.code)
+        console.log('Error Message:', addedEmailError.message)
+        console.log('Error Details:', addedEmailError.details)
+        console.log('Error Hint:', addedEmailError.hint)
+        console.log('Full Error Object:', addedEmailError)
+      }
       // Don't throw here since user was created successfully
     } else {
-      console.log('✅ AddedEmail record created successfully')
+      console.log('✅ AddedEmail record created successfully:', insertedEmail)
     }
 
     return { user: authData.user }
@@ -150,8 +170,8 @@ export async function getRecentUsers(): Promise<UserData[]> {
 
     console.log('📝 Fetching profiles from database via admin client...');
 
-    // Use admin client to fetch users - this requires service role key permissions
-    const { data: users, error }: { data: UserData[] | null, error: any } = await supabaseAdmin
+    // Use admin client to fetch users (assuming profiles are stored in 'profiles' table)
+    const { data: users, error } = await supabaseAdmin
       .from('profiles')
       .select('id, email, created_at')
       .order('created_at', { ascending: false })
@@ -240,13 +260,29 @@ export async function addEmailToAddedEmail(email: string, firstName?: string, la
       updated_at: new Date().toISOString()
     }
 
-    const { error } = await supabase
-      .from('AddedEmail')
-      .insert(addedEmailData)
+    const { data: insertedEmail, error } = await supabase
+      .from('public.AddedEmail')
+      .upsert(addedEmailData, {
+        onConflict: 'email',
+        ignoreDuplicates: false
+      })
+      .select('id, email')
+      .single()
 
     if (error) {
-      console.error('❌ Error adding to AddedEmail:', error)
-      return { success: false, error: error.message }
+      console.error('❌ Error adding to AddedEmail - Complete error dump:')
+      console.log('Error Code:', error.code)
+      console.log('Error Message:', error.message)
+      console.log('Error Details:', error.details)
+      console.log('Error Hint:', error.hint)
+      console.log('Full Error Object:', error)
+      
+      // Check if it's a duplicate error
+      if (error.code === '23505') {
+        console.log(`ℹ️ CONFLICT: Email ${email.toLowerCase()} violates constraint - details:`, error.details)
+        return { success: false, error: `Email constraint violation - ${error.details || 'email likely already exists'}` }
+      }
+      return { success: false, error: error.message || 'Unknown database error' }
     }
 
     console.log('✅ Email added to AddedEmail successfully')
@@ -262,8 +298,8 @@ export async function getAllAddedEmails(): Promise<AddedEmail[]> {
   try {
     console.log('📝 Fetching all added emails...')
     
-    const { data: addedEmails, error } = await supabaseAdmin
-      .from('AddedEmail')
+    const { data: addedEmails, error } = await supabase
+      .from('public.AddedEmail')
       .select('*')
       .order('created_at', { ascending: false })
 

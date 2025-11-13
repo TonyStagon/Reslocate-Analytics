@@ -1,7 +1,7 @@
 -- Create AddedEmail table for tracking user creation events
 CREATE TABLE IF NOT EXISTS public.AddedEmail (
     id SERIAL PRIMARY KEY,
-    email VARCHAR NOT NULL,
+    email VARCHAR NOT NULL UNIQUE,
     first_name VARCHAR,
     last_name VARCHAR,
     created_by UUID,
