@@ -11,6 +11,7 @@ interface UserData {
   created_at: string
 }
 
+
 export interface AddedEmail {
   id: number
   email: string
@@ -308,6 +309,136 @@ export async function getAllAddedEmails(): Promise<AddedEmail[]> {
     console.error('❌ Error in getAllAddedEmails:', error)
     return []
   }
+}
+
+// Import emails from CSV file
+export interface CSVEmailData {
+  email: string
+  first_name?: string
+  last_name?: string
+}
+
+export async function importEmailsFromCSV(file: File): Promise<{
+  success: boolean;
+  processed: number;
+  duplicates: number;
+  failed: number;
+  errors: Array<{ row: number; error: string }>
+}> {
+  try {
+    console.log('📝 Processing CSV file:', file.name)
+    
+    const text = await file.text()
+    const lines = text.split('\n').filter(line => line.trim())
+    
+    // Skip header row and process data rows
+    const dataLines = lines.slice(1) // Skip header row
+    let processed = 0
+    let duplicates = 0
+    let failed = 0
+    const errors: Array<{ row: number; error: string }> = []
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // Validate and process each row
+    for (let i = 0; i < dataLines.length; i++) {
+      try {
+        const line = dataLines[i].trim()
+        if (!line) continue // Skip empty lines
+        
+        const fields = line.split(',')
+        
+        // The CSV template has columns: id,email,first_name,last_name,created_by,created_at,updated_at
+        // We need to extract email, first_name, and last_name while ignoring other columns
+        if (fields.length < 2 || fields[1].trim() === '') {
+          errors.push({ row: i + 2, error: 'Email field is required' })
+          failed++
+          continue
+        }
+
+        // Field indices:
+        // 0: id, 1: email, 2: first_name, 3: last_name, 4: created_by, 5: created_at, 6: updated_at
+        const emailFieldIndex = 1 // email is in the second column
+        const firstNameFieldIndex = 2 // first_name is in the third column
+        const lastNameFieldIndex = 3 // last_name is in the fourth column
+
+        const email = fields[emailFieldIndex] ? fields[emailFieldIndex].trim().toLowerCase() : ''
+        const firstName = fields[firstNameFieldIndex]?.trim() || null
+        const lastName = fields[lastNameFieldIndex]?.trim() || null
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!email || !emailRegex.test(email)) {
+          errors.push({ row: i + 2, error: 'Invalid email format' })
+          failed++
+          continue
+        }
+
+        const addedEmailData = {
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          created_by: user?.id || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+        const { error } = await supabase
+          .from('addedemail')
+          .insert(addedEmailData)
+
+        if (error) {
+          if (error.code === '23505') {
+            // Duplicate email - count but don't consider as failure
+            console.log(`ℹ️ Email ${email} already exists`)
+            duplicates++
+          } else {
+            console.error(`❌ Error inserting email ${email}:`, error)
+            errors.push({ row: i + 2, error: error.message })
+            failed++
+          }
+        } else {
+          processed++
+        }
+
+      } catch (rowError: any) {
+        console.error(`❌ Error processing row ${i + 2}:`, rowError)
+        errors.push({ row: i + 2, error: rowError.message || 'Invalid row format' })
+        failed++
+      }
+    }
+
+    console.log(`✅ CSV import completed - Processed: ${processed}, Duplicates: ${duplicates}, Failed: ${failed}`, errors)
+    return {
+      success: errors.length === 0,
+      processed,
+      duplicates,
+      failed,
+      errors
+    }
+  } catch (error: any) {
+    console.error('❌ Error in importEmailsFromCSV:', error)
+    return {
+      success: false,
+      processed: 0,
+      duplicates: 0,
+      failed: 0,
+      errors: [{ row: 0, error: error.message }]
+    }
+  }
+}
+
+// Utility to download CSV template
+export function downloadCSVTemplate(): void {
+  const csvContent = 'id,email,first_name,last_name,created_by,created_at,updated_at\n1,johndoe@example.com,John,Doe,system-user,2024-11-12T10:00:00Z,2024-11-12T10:00:00Z\n2,janesmith@example.com,Jane,Smith,admin-user,2024-11-12T10:30:00Z,2024-11-12T10:30:00Z'
+  const blob = new Blob([csvContent], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'email_import_template.csv'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 // Copy to clipboard utility

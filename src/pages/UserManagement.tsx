@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react'
-import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2 } from 'lucide-react'
-import { createUserWithEmail, generatePassword, getRecentUsers, copyToClipboard, updateUserProfile, getUserProfile, addEmailToAddedEmail, getAllAddedEmails } from '../lib/userService'
+import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2, FileText, Upload, Download } from 'lucide-react'
+import {
+  createUserWithEmail,
+  generatePassword,
+  getRecentUsers,
+  copyToClipboard,
+  updateUserProfile,
+  getUserProfile,
+  addEmailToAddedEmail,
+  getAllAddedEmails,
+  importEmailsFromCSV,
+  downloadCSVTemplate
+} from '../lib/userService'
 import type { Profile } from '../types/database'
 import { AddedEmail } from '../lib/userService'
 
@@ -52,6 +63,17 @@ export function UserManagement() {
     last_name: ''
   })
   const [addingEmail, setAddingEmail] = useState(false)
+  
+  // CSV Import States
+  const [csvImportFile, setCsvImportFile] = useState<File | null>(null)
+  const [importingCSV, setImportingCSV] = useState(false)
+  const [importResults, setImportResults] = useState<{
+    success: boolean;
+    processed: number;
+    duplicates: number;
+    failed: number;
+    errors: Array<{ row: number; error: string }>
+  } | null>(null)
   
   const [touched, setTouched] = useState({ 
     email: false, 
@@ -280,6 +302,71 @@ export function UserManagement() {
   const handleCancelEdit = () => {
     setEditingProfile(null)
     setEditProfileData({})
+  }
+
+  // Handle CSV File Upload
+  const handleCSVFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file && file.type === 'text/csv') {
+      setCsvImportFile(file)
+      setImportResults(null)
+    } else {
+      setMessage({
+        text: 'Please select a valid CSV file',
+        type: 'error'
+      })
+    }
+  }
+
+  // Import Emails from CSV
+  const handleCSVImport = async () => {
+    if (!csvImportFile) {
+      setMessage({
+        text: 'Please select a CSV file to import',
+        type: 'error'
+      })
+      return
+    }
+
+    setImportingCSV(true)
+    setImportResults(null)
+    
+    try {
+      const result = await importEmailsFromCSV(csvImportFile)
+      setImportResults(result)
+      
+      if (result.processed > 0 || result.errors.length === 0) {
+        setMessage({
+          text: `Successfully imported ${result.processed} emails${result.duplicates > 0 ? ` (${result.duplicates} duplicates skipped)` : ''}`,
+          type: 'success'
+        })
+        setCsvImportFile(null)
+        
+        // Refresh the added emails list
+        await fetchAddedEmails()
+      } else {
+        setMessage({
+          text: `Import completed with ${result.errors.length} errors`,
+          type: 'error'
+        })
+      }
+    } catch (error) {
+      setMessage({
+        text: error instanceof Error ? error.message : 'Failed to import CSV',
+        type: 'error'
+      })
+    } finally {
+      setImportingCSV(false)
+    }
+  }
+
+  // Download CSV Template
+  const handleDownloadTemplate = () => {
+    downloadCSVTemplate()
+    setMessage({
+      text: 'CSV template downloaded successfully',
+      type: 'success'
+    })
   }
 
   return (
@@ -874,6 +961,91 @@ export function UserManagement() {
                 )}
               </button>
             </form>
+          </div>
+          
+          {/* CSV Import Section */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Bulk Import via CSV</h3>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Import multiple emails at once using a CSV file. The CSV should have email, first_name,
+                  and last_name columns.
+                </p>
+                
+                <div className="flex items-center space-x-3">
+                  <label className="flex-1">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleCSVFileChange}
+                      className="hidden"
+                      id="csv-file"
+                    />
+                    <div className="flex items-center space-x-2 px-4 py-2 border-2 border-dashed border-blue-300 rounded-lg hover:bg-blue-100 cursor-pointer">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                      <span className="text-blue-600">
+                        {csvImportFile ? csvImportFile.name : 'Choose CSV file'}
+                      </span>
+                    </div>
+                  </label>
+                  <button
+                    onClick={handleCSVImport}
+                    disabled={!csvImportFile || importingCSV}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {importingCSV ? (
+                      <Loader className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4" />
+                    )}
+                    <span>{importingCSV ? 'Importing...' : 'Import CSV'}</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Get Template</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Import Results */}
+              {importResults && (
+                <div className={`p-4 rounded-lg border ${
+                  importResults.errors.length === 0
+                    ? 'bg-green-50 border-green-200 text-green-800'
+                    : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                }`}>
+                  <p className="font-medium mb-2">
+                    Import Results:
+                  </p>
+                  <div className="text-sm space-y-1">
+                    <p>✅ Processed: {importResults.processed} emails</p>
+                    {importResults.duplicates > 0 && (
+                      <p>⚠️  Duplicates skipped: {importResults.duplicates} emails</p>
+                    )}
+                    {importResults.errors.length > 0 && (
+                      <p>❌ Failed: {importResults.errors.length} rows</p>
+                    )}
+                  </div>
+                  
+                  {importResults.errors.length > 0 && (
+                    <div className="mt-3 text-sm">
+                      <p className="font-medium mb-1">Errors:</p>
+                      <ul className="max-h-32 overflow-y-auto space-y-1">
+                        {importResults.errors.map((errorData, index) => (
+                          <li key={index} className="text-red-600">
+                            Row {errorData.row}: {errorData.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Added Emails List */}
