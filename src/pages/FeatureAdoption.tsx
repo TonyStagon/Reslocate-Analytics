@@ -6,7 +6,7 @@ import { ErrorMessage } from '../components/ErrorMessage'
 import { SearchableTable } from '../components/SearchableTable'
 import { supabase } from '../lib/supabase'
 
-// MIGRATION: Analytics migrated from button_clicks to page_click_count table
+// MIGRATION: Ana   slytics migrated from button_clicks to page_click_count table
 // Old button_clicks schema deprecated - now using pre-aggregated page_click_count analytics
 
 interface AdoptionStats {

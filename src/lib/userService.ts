@@ -118,33 +118,22 @@ export async function createUserWithEmail(
       updated_at: new Date().toISOString()
     }
 
-    // Use upsert instead of insert to handle existing emails gracefully
+    // Try to insert, and gracefully handle duplicate emails
     const { data: insertedEmail, error: addedEmailError } = await supabase
       .from('addedemail')
-      .upsert(addedEmailData, {
-        onConflict: 'email',
-        ignoreDuplicates: false
-      })
+      .insert(addedEmailData)
       .select('id, email')
       .single()
 
     if (addedEmailError) {
-      console.warn('⚠️ AddedEmail tracking warning:', addedEmailError)
-      console.log('❌ Raw AddedEmail insert error details:', JSON.stringify(addedEmailError))
-      
-      // Check if it's a duplicate error
+      // If duplicate email, this is expected and we should just continue
       if (addedEmailError.code === '23505') {
-        console.log(`ℹ️ CONFLICT: Email ${email.toLowerCase()} violates unique constraint`)
-        console.log(`🔍 Constraint details:`, addedEmailError.details)
+        console.log(`ℹ️ Email ${email.toLowerCase()} already exists in AddedEmail table - this is expected behavior`)
       } else {
-        console.log('❌ Failed to add email to AddedEmail table - Full error dump:')
-        console.log('Error Code:', addedEmailError.code)
-        console.log('Error Message:', addedEmailError.message)
-        console.log('Error Details:', addedEmailError.details)
-        console.log('Error Hint:', addedEmailError.hint)
-        console.log('Full Error Object:', addedEmailError)
+        console.warn('⚠️ AddedEmail tracking warning:', addedEmailError)
+        console.log('❌ Raw AddedEmail insert error details:', addedEmailError)
       }
-      // Don't throw here since user was created successfully
+      // Don't throw here since user was created successfully in auth system
     } else {
       console.log('✅ AddedEmail record created successfully:', insertedEmail)
     }
@@ -262,14 +251,20 @@ export async function addEmailToAddedEmail(email: string, firstName?: string, la
 
     const { data: insertedEmail, error } = await supabase
       .from('addedemail')
-      .upsert(addedEmailData, {
-        onConflict: 'email',
-        ignoreDuplicates: false
-      })
+      .insert(addedEmailData)
       .select('id, email')
       .single()
 
     if (error) {
+      // If it's a duplicate email error, don't treat it as a failure
+      if (error.code === '23505') {
+        console.log(`ℹ️ Email ${email.toLowerCase()} already exists in AddedEmail table`)
+        return {
+          success: true,
+          error: `Email ${email.toLowerCase()} already exists in the system`
+        }
+      }
+      
       console.error('❌ Error adding to AddedEmail - Complete error dump:')
       console.log('Error Code:', error.code)
       console.log('Error Message:', error.message)
@@ -277,11 +272,6 @@ export async function addEmailToAddedEmail(email: string, firstName?: string, la
       console.log('Error Hint:', error.hint)
       console.log('Full Error Object:', error)
       
-      // Check if it's a duplicate error
-      if (error.code === '23505') {
-        console.log(`ℹ️ CONFLICT: Email ${email.toLowerCase()} violates constraint - details:`, error.details)
-        return { success: false, error: `Email constraint violation - ${error.details || 'email likely already exists'}` }
-      }
       return { success: false, error: error.message || 'Unknown database error' }
     }
 
@@ -289,6 +279,10 @@ export async function addEmailToAddedEmail(email: string, firstName?: string, la
     return { success: true }
   } catch (error: any) {
     console.error('❌ Error in addEmailToAddedEmail:', error)
+    // If it's a duplicate constraint, return success since email already tracked
+    if (error.code === '23505' || error.details?.includes('duplicate')) {
+      return { success: true, error: `Email already exists in the system` }
+    }
     return { success: false, error: error.message }
   }
 }
