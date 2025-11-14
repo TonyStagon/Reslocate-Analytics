@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2, FileText, Upload, Download } from 'lucide-react'
+import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2, FileText, Upload, Download, ShieldCheck, User } from 'lucide-react'
 import {
   createUserWithEmail,
   generatePassword,
@@ -10,7 +10,10 @@ import {
   addEmailToAddedEmail,
   getAllAddedEmails,
   importEmailsFromCSV,
-  downloadCSVTemplate
+  downloadCSVTemplate,
+  createAuthUserFromAddedEmail,
+  getAuthUserStatus,
+  bulkCreateAuthUsers
 } from '../lib/userService'
 import type { Profile } from '../types/database'
 import { AddedEmail } from '../lib/userService'
@@ -30,7 +33,7 @@ interface CreateUserFormData {
 }
 
 export function UserManagement() {
-  const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'>('create')
+const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'>('create')
   
   // Create User Form States
   const [userFormData, setUserFormData] = useState<CreateUserFormData>({
@@ -57,6 +60,9 @@ export function UserManagement() {
   // AddedEmail Management States
   const [addedEmails, setAddedEmails] = useState<AddedEmail[]>([])
   const [loadingAddedEmails, setLoadingAddedEmails] = useState(false)
+  const [authStatusMap, setAuthStatusMap] = useState<{[email: string]: boolean}>({})
+  const [authenticatingEmail, setAuthenticatingEmail] = useState<string | null>(null)
+  const [bulkAuthenticating, setBulkAuthenticating] = useState(false)
   const [addEmailForm, setAddEmailForm] = useState({
     email: '',
     first_name: '',
@@ -304,6 +310,95 @@ export function UserManagement() {
     setEditProfileData({})
   }
 
+  // Authentication functions for AddedEmail
+  const authenticateEmail = async (emailEntry: AddedEmail) => {
+    setAuthenticatingEmail(emailEntry.email)
+    try {
+      const result = await createAuthUserFromAddedEmail(emailEntry)
+      
+      if (result.success) {
+        setMessage({
+          text: `Successfully authenticated ${emailEntry.email}! Authentication account created.`,
+          type: 'success'
+        })
+        // Update auth status for this email
+        setAuthStatusMap(prev => ({
+          ...prev,
+          [emailEntry.email]: true
+        }))
+      } else {
+        setMessage({
+          text: `Failed to authenticate ${emailEntry.email}: ${result.error}`,
+          type: 'error'
+        })
+      }
+    } catch (error: any) {
+      setMessage({
+        text: `Error authenticating ${emailEntry.email}: ${error.message || 'Unknown error'}`,
+        type: 'error'
+      })
+    } finally {
+      setAuthenticatingEmail(null)
+    }
+  }
+
+  const bulkAuthenticateEmails = async () => {
+    // Get emails that don't have auth accounts yet
+    const emailsToAuthenticate = addedEmails.filter(emailEntry => !authStatusMap[emailEntry.email])
+    
+    if (emailsToAuthenticate.length === 0) {
+      setMessage({
+        text: 'All emails are already authenticated!',
+        type: 'error'
+      })
+      return
+    }
+
+    setBulkAuthenticating(true)
+    setMessage(null)
+
+    try {
+      const result = await bulkCreateAuthUsers(emailsToAuthenticate)
+      
+      if (result.success || result.created.length > 0) {
+        setMessage({
+          text: `Successfully authenticated ${result.created.length} emails${result.errors.length > 0 ? ` (${result.errors.length} failed)` : ''}`,
+          type: 'success'
+        })
+        
+        // Update auth status for created users
+        const updatedStatusMap = { ...authStatusMap }
+        result.created.forEach(email => {
+          updatedStatusMap[email] = true
+        })
+        setAuthStatusMap(updatedStatusMap)
+      } else {
+        setMessage({
+          text: `Failed to authenticate emails: ${result.errors.map(e => e.error).join(', ')}`,
+          type: 'error'
+        })
+      }
+    } catch (error: any) {
+      setMessage({
+        text: `Error during bulk authentication: ${error.message || 'Unknown error'}`,
+        type: 'error'
+      })
+    } finally {
+      setBulkAuthenticating(false)
+    }
+  }
+
+  // Refresh auth status for current email list
+  const refreshAuthStatus = async () => {
+    try {
+      const emailList = addedEmails.map(email => email.email)
+      const status = await getAuthUserStatus(emailList)
+      setAuthStatusMap(status)
+    } catch (error) {
+      console.error('Error refreshing auth status:', error)
+    }
+  }
+
   // Handle CSV File Upload
   const handleCSVFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -367,6 +462,11 @@ export function UserManagement() {
       text: 'CSV template downloaded successfully',
       type: 'success'
     })
+  }
+
+  const getUnauthenticatedEmailCount = (): number => {
+    if (!addedEmails.length) return 0
+    return addedEmails.filter(emailEntry => authStatusMap[emailEntry.email] !== true).length
   }
 
   return (
@@ -875,9 +975,36 @@ export function UserManagement() {
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">Added Emails Management</h2>
-            <div className="flex items-center space-x-2 text-gray-600">
-              <Mail className="w-5 h-5" />
-              <span>{addedEmails.length} emails tracked</span>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-green-600">
+                <ShieldCheck className="w-5 h-5" />
+                <span>
+                  {Object.values(authStatusMap).filter(status => status).length} / {addedEmails.length} authenticated
+                </span>
+              </div>
+              {getUnauthenticatedEmailCount() > 0 && (
+                <button
+                  onClick={bulkAuthenticateEmails}
+                  disabled={bulkAuthenticating}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {bulkAuthenticating ? (
+                    <Loader className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <User className="w-4 h-4" />
+                  )}
+                  <span>
+                    {bulkAuthenticating ? 'Authenticating...' : `Authenticate (${getUnauthenticatedEmailCount()})`}
+                  </span>
+                </button>
+              )}
+              <button
+                onClick={refreshAuthStatus}
+                className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                title="Refresh authentication status"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
             </div>
           </div>
           
@@ -1064,9 +1191,13 @@ export function UserManagement() {
               {addedEmails.map((emailEntry) => (
                 <div key={emailEntry.id} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                        <Mail className="w-5 h-5 text-green-600" />
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-10 h-10 ${authStatusMap[emailEntry.email] ? 'bg-green-100' : 'bg-orange-100'} rounded-full flex items-center justify-center`}>
+                        {authStatusMap[emailEntry.email] ? (
+                          <ShieldCheck className="w-5 h-5 text-green-600" />
+                        ) : (
+                          <Mail className="w-5 h-5 text-orange-600" />
+                        )}
                       </div>
                       <div>
                         <h3 className="font-medium text-gray-900">
@@ -1077,8 +1208,27 @@ export function UserManagement() {
                         <p className="text-sm text-gray-600">{emailEntry.email}</p>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                      Added {emailEntry.created_at ? new Date(emailEntry.created_at).toLocaleDateString() : 'Unknown'}
+                    <div className="flex items-center space-x-4">
+                      <div className="text-sm text-gray-500">
+                        Added {emailEntry.created_at ? new Date(emailEntry.created_at).toLocaleDateString() : 'Unknown'}
+                        {authStatusMap[emailEntry.email] && (
+                          <div className="text-green-600 text-xs font-medium mt-1">✓ Authenticated</div>
+                        )}
+                      </div>
+                      {!authStatusMap[emailEntry.email] && (
+                        <button
+                          onClick={() => authenticateEmail(emailEntry)}
+                          disabled={authenticatingEmail === emailEntry.email}
+                          className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed space-x-1"
+                        >
+                          {authenticatingEmail === emailEntry.email ? (
+                            <Loader className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="w-3 h-3" />
+                          )}
+                          <span className="text-xs">Authenticate</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

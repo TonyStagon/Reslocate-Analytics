@@ -311,6 +311,131 @@ export async function getAllAddedEmails(): Promise<AddedEmail[]> {
   }
 }
 
+// Create auth user from AddedEmail entry
+export async function createAuthUserFromAddedEmail(
+  emailEntry: AddedEmail,
+  password?: string
+): Promise<{ success: boolean; error?: string; user?: any }> {
+  try {
+    console.log('📝 Creating auth user from AddedEmail:', emailEntry.email)
+    
+    // If no password provided, generate one
+    const userPassword = password || generatePassword(12)
+    
+    const { user } = await createUserWithEmail(
+      emailEntry.email,
+      userPassword,
+      {
+        first_name: emailEntry.first_name || '',
+        last_name: emailEntry.last_name || '',
+        role: 'Learner' // Default role
+      }
+    )
+
+    if (!user) {
+      throw new Error('Failed to create auth user')
+    }
+
+    console.log('✅ Auth user created successfully:', user.id)
+    return { success: true, user: user }
+  } catch (error: any) {
+    console.error('❌ Error creating auth user from AddedEmail:', error)
+    // Check if user already exists
+    if (error.message?.includes('already registered') || error.message?.includes('already exists')) {
+      return {
+        success: true,
+        error: `User with email ${emailEntry.email} already exists in authentication system`
+      }
+    }
+    return { success: false, error: error.message }
+  }
+}
+
+// Check authentication status for AddedEmail entries
+export async function getAuthUserStatus(emails: string[]): Promise<{[email: string]: boolean}> {
+  try {
+    console.log('📝 Checking auth status for emails:', emails)
+    
+    // Use admin client to check auth users by email
+    const { data: authUsers, error } = await supabaseAdmin
+      .from('auth.users')
+      .select('email')
+      .in('email', emails.map(email => email.toLowerCase()))
+
+    if (error) {
+      console.error('❌ Error checking auth users:', error)
+      return {}
+    }
+
+    const emailStatus: {[email: string]: boolean} = {}
+    const authEmails = new Set(authUsers?.map(user => user.email.toLowerCase()) || [])
+    
+    emails.forEach(email => {
+      emailStatus[email] = authEmails.has(email.toLowerCase())
+    })
+
+    console.log('✅ Auth status check completed')
+    return emailStatus
+  } catch (error) {
+    console.error('❌ Error in getAuthUserStatus:', error)
+    return {}
+  }
+}
+
+// Create auth users for multiple AddedEmail entries
+export async function bulkCreateAuthUsers(
+  emailEntries: AddedEmail[]
+): Promise<{
+  success: boolean;
+  created: string[];
+  skipped: string[];
+  errors: Array<{ email: string; error: string }>
+}> {
+  try {
+    console.log('📝 Bulk creating auth users for', emailEntries.length, 'emails')
+    
+    const created: string[] = []
+    const skipped: string[] = []
+    const errors: Array<{ email: string; error: string }> = []
+
+    for (const entry of emailEntries) {
+      const result = await createAuthUserFromAddedEmail(entry)
+      if (result.success) {
+        created.push(entry.email)
+      } else {
+        errors.push({ email: entry.email, error: result.error || 'Unknown error' })
+      }
+    }
+
+    if (errors.length === 0) {
+      console.log('✅ Bulk user creation completed:', { created: created.length })
+    } else {
+      console.log('⚠️ Bulk user creation completed with errors:', {
+        created: created.length,
+        errors: errors.length
+      })
+    }
+
+    return {
+      success: errors.length === emailEntries.length ? false : true,
+      created,
+      skipped,
+      errors
+    }
+  } catch (error: any) {
+    console.error('❌ Error in bulkCreateAuthUsers:', error)
+    return {
+      success: false,
+      created: [],
+      skipped: [],
+      errors: emailEntries.map(entry => ({
+        email: entry.email,
+        error: error.message
+      }))
+    }
+  }
+}
+
 // Import emails from CSV file
 export interface CSVEmailData {
   email: string
