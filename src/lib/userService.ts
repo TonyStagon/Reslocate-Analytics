@@ -17,6 +17,10 @@ export interface AddedEmail {
   email: string
   first_name?: string | null
   last_name?: string | null
+  phone_number?: string | null
+  school?: string | null
+  grade?: string | null
+  date_of_birth?: string | null
   created_by?: string | null
   created_at?: string
   updated_at?: string
@@ -109,35 +113,9 @@ export async function createUserWithEmail(
       console.log('✅ Profile created successfully')
     }
 
-    // Insert into AddedEmail table to track user creation
-    const addedEmailData = {
-      email: email.toLowerCase(),
-      first_name: profileData?.first_name || null,
-      last_name: profileData?.last_name || null,
-      created_by: authData.user.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-
-    // Try to insert, and gracefully handle duplicate emails
-    const { data: insertedEmail, error: addedEmailError } = await supabase
-      .from('addedemail')
-      .insert(addedEmailData)
-      .select('id, email')
-      .single()
-
-    if (addedEmailError) {
-      // If duplicate email, this is expected and we should just continue
-      if (addedEmailError.code === '23505') {
-        console.log(`ℹ️ Email ${email.toLowerCase()} already exists in AddedEmail table - this is expected behavior`)
-      } else {
-        console.warn('⚠️ AddedEmail tracking warning:', addedEmailError)
-        console.log('❌ Raw AddedEmail insert error details:', addedEmailError)
-      }
-      // Don't throw here since user was created successfully in auth system
-    } else {
-      console.log('✅ AddedEmail record created successfully:', insertedEmail)
-    }
+    // Only register in AddedEmail table if explicitly requested by the User Management system
+    // This prevents duplicate entries when creating users directly
+    console.log('ℹ️ User created successfully WITHOUT AddedEmail registration - AddedEmail registration should be handled separately')
 
     return { user: authData.user }
   } catch (error: any) {
@@ -236,7 +214,15 @@ export async function updateUserProfile(profileId: string, profileData: any): Pr
 }
 
 // Add email to AddedEmail table
-export async function addEmailToAddedEmail(email: string, firstName?: string, lastName?: string): Promise<{ success: boolean; error?: string }> {
+export async function addEmailToAddedEmail(
+  email: string,
+  firstName?: string,
+  lastName?: string,
+  phone_number?: string,
+  school?: string,
+  grade?: string,
+  date_of_birth?: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('📝 Adding email to AddedEmail:', email)
     
@@ -245,6 +231,10 @@ export async function addEmailToAddedEmail(email: string, firstName?: string, la
       email: email.toLowerCase(),
       first_name: firstName || null,
       last_name: lastName || null,
+      phone_number: phone_number || null,
+      school: school || null,
+      grade: grade || null,
+      date_of_birth: date_of_birth || null,
       created_by: user?.id || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -441,6 +431,10 @@ export interface CSVEmailData {
   email: string
   first_name?: string
   last_name?: string
+  phone_number?: string
+  school?: string
+  grade?: string
+  date_of_birth?: string
 }
 
 export async function importEmailsFromCSV(file: File): Promise<{
@@ -472,23 +466,31 @@ export async function importEmailsFromCSV(file: File): Promise<{
         
         const fields = line.split(',')
         
-        // The CSV template has columns: id,email,first_name,last_name,created_by,created_at,updated_at
-        // We need to extract email, first_name, and last_name while ignoring other columns
+        // The CSV template has columns: id,email,first_name,last_name,phone_number,school,grade,date_of_birth,created_by,created_at,updated_at
+        // We need to extract all profile fields while ignoring id and system columns
         if (fields.length < 2 || fields[1].trim() === '') {
           errors.push({ row: i + 2, error: 'Email field is required' })
           failed++
           continue
         }
+// Field indices:
+// 0: id, 1: email, 2: first_name, 3: last_name, 4: phone_number, 5: school, 6: grade, 7: date_of_birth, 8: created_by, 9: created_at, 10: updated_at
+const emailFieldIndex = 1 // email is in the second column
+const firstNameFieldIndex = 2 // first_name is in the third column
+const lastNameFieldIndex = 3 // last_name is in the fourth column
+const phoneNumberFieldIndex = 4 // phone_number is in the fifth column
+const schoolFieldIndex = 5 // school is in the sixth column
+const gradeFieldIndex = 6 // grade is in the seventh column
+const dateOfBirthFieldIndex = 7 // date_of_birth is in the eighth column
 
-        // Field indices:
-        // 0: id, 1: email, 2: first_name, 3: last_name, 4: created_by, 5: created_at, 6: updated_at
-        const emailFieldIndex = 1 // email is in the second column
-        const firstNameFieldIndex = 2 // first_name is in the third column
-        const lastNameFieldIndex = 3 // last_name is in the fourth column
+const email = fields[emailFieldIndex] ? fields[emailFieldIndex].trim().toLowerCase() : ''
+const firstName = fields[firstNameFieldIndex]?.trim() || null
+const lastName = fields[lastNameFieldIndex]?.trim() || null
+const phone_number = fields[phoneNumberFieldIndex]?.trim() || null
+const school = fields[schoolFieldIndex]?.trim() || null
+const grade = fields[gradeFieldIndex]?.trim() || null
+const date_of_birth = fields[dateOfBirthFieldIndex]?.trim() || null
 
-        const email = fields[emailFieldIndex] ? fields[emailFieldIndex].trim().toLowerCase() : ''
-        const firstName = fields[firstNameFieldIndex]?.trim() || null
-        const lastName = fields[lastNameFieldIndex]?.trim() || null
         
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -502,6 +504,10 @@ export async function importEmailsFromCSV(file: File): Promise<{
           email,
           first_name: firstName,
           last_name: lastName,
+          phone_number: phone_number,
+          school: school,
+          grade: grade,
+          date_of_birth: date_of_birth,
           created_by: user?.id || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -554,7 +560,7 @@ export async function importEmailsFromCSV(file: File): Promise<{
 
 // Utility to download CSV template
 export function downloadCSVTemplate(): void {
-  const csvContent = 'id,email,first_name,last_name,created_by,created_at,updated_at\n1,johndoe@example.com,John,Doe,system-user,2024-11-12T10:00:00Z,2024-11-12T10:00:00Z\n2,janesmith@example.com,Jane,Smith,admin-user,2024-11-12T10:30:00Z,2024-11-12T10:30:00Z'
+  const csvContent = 'id,email,first_name,last_name,phone_number,school,grade,date_of_birth,created_by,created_at,updated_at\n1,johndoe@example.com,John,Doe,+27629987561,Sandton High School,Grade 11,2005-03-15,system-user,2024-11-12T10:00:00Z,2024-11-12T10:00:00Z\n2,janesmith@example.com,Jane,Smith,+27769453218,Batswadi Secondary,Grade 10,2006-07-22,admin-user,2024-11-12T10:30:00Z,2024-11-12T10:30:00Z'
   const blob = new Blob([csvContent], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -584,5 +590,212 @@ export function copyToClipboard(text: string): Promise<boolean> {
       document.body.removeChild(textArea)
       return Promise.resolve(false)
     }
+  }
+}
+
+// Delete email from AddedEmail table by ID
+export async function deleteEmailFromAddedEmail(id: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('📝 Deleting email from AddedEmail with ID:', id)
+    
+    const { error } = await supabase
+      .from('addedemail')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('❌ Error deleting AddedEmail entry:', error)
+      return { success: false, error: error.message }
+    }
+
+    console.log('✅ Email entry deleted successfully')
+    return { success: true }
+  } catch (error: any) {
+    console.error('❌ Error in deleteEmailFromAddedEmail:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Enhanced function to add email with optional authentication
+export async function addEmailWithAuthentication(
+  email: string,
+  firstName?: string,
+  lastName?: string,
+  phone_number?: string,
+  school?: string,
+  grade?: string,
+  date_of_birth?: string,
+  includeAuthentication?: boolean,
+  password?: string
+): Promise<{
+  success: boolean;
+  addedEmailData?: any;
+  authData?: {
+    user: any;
+    email: string;
+    passwordDisplay: string;
+    auth_created: boolean;
+  };
+  errors: string[];
+  messages: string[];
+}> {
+  try {
+    console.log('📝 Enhanced adding email with optional authentication:', email, 'auth-enabled:', includeAuthentication)
+    
+    const errors: string[] = []
+    const messages: string[] = []
+
+    // Step 1: Add to AddedEmail table (existing logic)
+    const { data: currentUser } = await supabase.auth.getUser()
+    const addedEmailInsert = {
+      email: email.toLowerCase(),
+      first_name: firstName || null,
+      last_name: lastName || null,
+      phone_number: phone_number || null,
+      school: school || null,
+      grade: grade || null,
+      date_of_birth: date_of_birth || null,
+      created_by: currentUser?.user?.id || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    const { data: insertedEmail, error: addedEmailError } = await supabase
+      .from('addedemail')
+      .insert(addedEmailInsert)
+      .select('id, email, first_name, last_name')
+      .single()
+
+    let addedEmailData = insertedEmail
+
+    if (addedEmailError) {
+      // If duplicate email, don't treat as fatal error
+      if (addedEmailError.code === '23505') {
+        console.log(`ℹ️ Email ${email.toLowerCase()} already exists in AddedEmail table`)
+        messages.push('Email already existed in AddedEmail table - data reused')
+        
+        // Get the existing entry
+        const { data: existingEntry } = await supabase
+          .from('addedemail')
+          .select('*')
+          .eq('email', email.toLowerCase())
+          .single()
+        addedEmailData = existingEntry
+        
+        // If we still can't get the entry after a duplicate error, something is wrong
+        if (!addedEmailData) {
+          console.error('❌ Cannot find existing email entry despite duplicate error')
+          errors.push('System error: Could not retrieve existing email data')
+          return { success: false, errors, messages }
+        }
+      } else {
+        console.error('❌ Error adding to AddedEmail:', addedEmailError)
+        errors.push('Failed to add to AddedEmail table: ' + addedEmailError.message)
+        return { success: false, errors, messages }
+      }
+    }
+    
+    // TypeScript safe check - at this point addedEmailData should be available
+    if (!addedEmailData) {
+      console.error('❌ Cannot create auth user: AddedEmail data is not available after all checks')
+      errors.push('System error: Email data is not available for authentication creation')
+      return { success: false, errors, messages }
+    }
+    
+    const authResult: any = {
+      user: null,
+      email: '',
+      passwordDisplay: '',
+      auth_created: false
+    }
+
+    // Step 2: If requested AND no errors so far, create authentication
+    if (includeAuthentication && errors.length === 0) {
+      try {
+
+        const usePassword = password || generatePassword(12)
+        authResult.email = email.toLowerCase()
+        
+        authResult.passwordDisplay = usePassword.endsWith(' (Generated)') ?
+          usePassword :
+          usePassword + (password ? ' (Custom)' : ' (Generated)')
+
+        const authCall = await createAuthUserFromAddedEmail(
+          addedEmailData,
+          password || undefined // Only pass custom password if specified
+        )
+
+        if (authCall.success) {
+          authResult.user = authCall.user
+          authResult.auth_created = true
+          messages.push('✅ Successfully created authentication user account')
+          messages.push(`📋 Login details: ${email} / ${authResult.passwordDisplay}`)
+        } else {
+          if (authCall.error && authCall.error.includes('already exists')) {
+            messages.push('ℹ️ Authentication user already exists (appears as verified)')
+            authResult.passwordDisplay = 'Hidden (user exists in authentication)'
+            authResult.auth_created = true
+          } else {
+            errors.push('Failed to create authentication: ' + (authCall.error || 'Unknown error'))
+          }
+        }
+
+      } catch (authError: any) {
+        const errorSafeMessage = authError.message?.toLowerCase() || ''
+        console.error('❌ Error during authentication creation:', authError)
+        if (errorSafeMessage.includes('already exists') || errorSafeMessage.includes('already registered')) {
+          messages.push('⚠️ User authentication already existed (no changes made)')
+          authResult.passwordDisplay = ''
+        } else {
+          errors.push('Final error for auth creation: ' + authError.message)
+        }
+      }
+    } else if (includeAuthentication) {
+      messages.push('🔄 Authentication creation was not attempted due to existing errors')
+    }
+
+    console.log('✅ Enhanced email process completed with', errors.length, 'errors and', messages.length, 'messages')
+    const finalSuccess = errors.length === 0
+    if (finalSuccess) messages.push('✅ Process completed successfully')
+
+    return {
+      success: finalSuccess,
+      addedEmailData,
+      authData: authResult.auth_created || authResult.user ? authResult : undefined,
+      errors,
+      messages
+    }
+
+  } catch (error: any) {
+    console.error('❌ Overall error in addEmailWithAuthentication:', error)
+    return {
+      success: false,
+      errors: [error.message || 'Unknown system error occurred'],
+      messages: ['❌ Process failed due to system error']
+    }
+  }
+}
+
+// Check if email already exists in AddedEmail table before adding
+export async function checkEmailExistsInAddedEmail(email: string): Promise<boolean> {
+  try {
+    console.log('📝 Checking if email exists in AddedEmail:', email)
+    
+    const { data: existingEmails, error } = await supabase
+      .from('addedemail')
+      .select('email')
+      .eq('email', email.toLowerCase())
+
+    if (error) {
+      console.error('❌ Error checking email existence:', error)
+      return false
+    }
+
+    const exists = existingEmails && existingEmails.length > 0
+    console.log(`✅ Email check - Exists: ${exists}, Count: ${existingEmails?.length || 0}`)
+    return exists
+  } catch (error) {
+    console.error('❌ Error in checkEmailExistsInAddedEmail:', error)
+    return false
   }
 }

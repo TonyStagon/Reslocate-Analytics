@@ -13,7 +13,10 @@ import {
   downloadCSVTemplate,
   createAuthUserFromAddedEmail,
   getAuthUserStatus,
-  bulkCreateAuthUsers
+  bulkCreateAuthUsers,
+  deleteEmailFromAddedEmail,
+  checkEmailExistsInAddedEmail,
+  addEmailWithAuthentication
 } from '../lib/userService'
 import type { Profile } from '../types/database'
 import { AddedEmail } from '../lib/userService'
@@ -33,7 +36,12 @@ interface CreateUserFormData {
 }
 
 export function UserManagement() {
-const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'>('create')
+  
+  // Email Duplicate Prevention States
+  const [emailCheckTimeout, setEmailCheckTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [emailExistsError, setEmailExistsError] = useState<string | null>(null)
+  const [checkingEmail, setCheckingEmail] = useState(false)
   
   // Create User Form States
   const [userFormData, setUserFormData] = useState<CreateUserFormData>({
@@ -66,9 +74,20 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
   const [addEmailForm, setAddEmailForm] = useState({
     email: '',
     first_name: '',
-    last_name: ''
+    last_name: '',
+    phone_number: '',
+    school: '',
+    grade: '',
+    date_of_birth: '',
+    include_authentication: false,
+    password_option: 'auto',
+    custom_password: ''
   })
   const [addingEmail, setAddingEmail] = useState(false)
+  const [generatedAddEmailPassword, setGeneratedAddEmailPassword] = useState('')
+  const [addEmailPasswordCopied, setAddEmailPasswordCopied] = useState(false)
+  const [deletingEmailId, setDeletingEmailId] = useState<number | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null)
   
   // CSV Import States
   const [csvImportFile, setCsvImportFile] = useState<File | null>(null)
@@ -287,7 +306,18 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
           text: `Email ${addEmailForm.email} added successfully to AddedEmail table!`,
           type: 'success'
         })
-        setAddEmailForm({ email: '', first_name: '', last_name: '' })
+        setAddEmailForm({
+          email: '',
+          first_name: '',
+          last_name: '',
+          phone_number: '',
+          school: '',
+          grade: '',
+          date_of_birth: '',
+          include_authentication: false,
+          password_option: 'auto',
+          custom_password: ''
+        })
         await fetchAddedEmails()
       } else {
         setMessage({
@@ -295,14 +325,112 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
           type: 'error'
         })
       }
-    } catch (error) {
+    } catch (simpleError) {
+      console.error('Error in initial addEmailToAddedEmail:', simpleError)
       setMessage({
-        text: error instanceof Error ? error.message : 'Failed to add email',
+        text: `Failed to add email to AddedEmail table`,
         type: 'error'
       })
+    }
+
+    // Import to test single or dual tables via the enhanced service
+    try {
+      const advancedResult = await addEmailWithAuthentication(
+        addEmailForm.email,
+        addEmailForm.first_name,
+        addEmailForm.last_name,
+        addEmailForm.phone_number || undefined, // phone_number (optional)
+        addEmailForm.school || undefined, // school (optional)
+        addEmailForm.grade || undefined, // grade (optional)
+        addEmailForm.date_of_birth || undefined, // date_of_birth (optional)
+        addEmailForm.include_authentication,
+        addEmailForm.password_option === 'custom' ? addEmailForm.custom_password : undefined
+      )
+
+      let finalMessage = ''
+      const messageChunks = [`Added Email ${addEmailForm.email} to AddedEmail`]
+
+      if (advancedResult.authData && advancedResult.authData.auth_created) {
+        messageChunks.push(`✅ Created Users/authentication entry${advancedResult.authData.passwordDisplay ? `. Login: ${addEmailForm.email} / ${advancedResult.authData.passwordDisplay}` : ''}`)
+      }
+
+      if (advancedResult.messages) {
+        messageChunks.push(...advancedResult.messages)
+      }
+
+      finalMessage = messageChunks.join(' ')
+
+      if (advancedResult.success) {
+        setMessage({ text: finalMessage, type: 'success' })
+        // Reset the immediate form UI
+        setAddEmailForm({
+          email: '',
+          first_name: '',
+          last_name: '',
+          phone_number: '',
+          school: '',
+          grade: '',
+          date_of_birth: '',
+          include_authentication: false,
+          password_option: 'auto',
+          custom_password: ''
+        })
+        setGeneratedAddEmailPassword('')
+        
+        // Refresh the added emails list to update visual status
+        await fetchAddedEmails()
+      
+      } else if (advancedResult.errors) {
+        // Still consider request successful if email was added despite auth errors
+        if (messageChunks.includes('Added Email') && advancedResult.errors.some(e => e.includes('Auth profile'))) {
+          setMessage({ text: finalMessage, type: 'success' })
+          setAddEmailForm({
+            email: '',
+            first_name: '',
+            last_name: '',
+            phone_number: '',
+            school: '',
+            grade: '',
+            date_of_birth: '',
+            include_authentication: false,
+            password_option: 'auto',
+            custom_password: ''
+          })
+          await fetchAddedEmails()
+        } else {
+          setMessage({
+            text: `Email partially added but encountered issues - confirmed entry in AddedEmail table - please check database sync. ${advancedResult.errors.join(', ')}`,
+            type: 'error'
+          })
+        }
+      }
+    } catch (advancedError) {
+      const errorDetails = advancedError instanceof Error ? advancedError.message : 'Connection or system error'
+      // Attempt debounced re-opening by not permanently blocking submission
+      console.warn('Fallback to simpler Add logic:', errorDetails)
+      setMessage({ text: `Oops unable to Dual-write. ${errorDetails}. Will only add to AddedEmail instead.`, type: 'error' })
+      
+      // Falling back
+      const regularResult = await addEmailToAddedEmail(
+        addEmailForm.email,
+        addEmailForm.first_name,
+        addEmailForm.last_name
+      )
+      
+      if (regularResult.success || regularResult.error?.includes('already exists')) {
+        setMessage({
+          text: `Fallback completed - Email (${addEmailForm.email}) added to AddedEmail table (Auth generation skipped)`,
+          type: 'error'  // Changed from 'warning'
+        })
+        setAddEmailForm({ email: '', first_name: '', last_name: '', phone_number: '', school: '', grade: '', date_of_birth: '', include_authentication: false, password_option: 'auto', custom_password: '' })
+        await fetchAddedEmails()
+      } else {
+        setMessage({ text: `Full failure to add email: ${regularResult.error || 'Please try later'}`, type: 'error' })
+      }
     } finally {
       setAddingEmail(false)
     }
+
   }
 
   const handleCancelEdit = () => {
@@ -385,6 +513,91 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
       })
     } finally {
       setBulkAuthenticating(false)
+    }
+  }
+
+  // Delete functionality for AddedEmail entries
+  const handleDeleteEmail = async (id: number) => {
+    setDeletingEmailId(id)
+    try {
+      const success = await deleteEmailFromAddedEmail(id)
+      if (success) {
+        setMessage({
+          text: 'Email deleted successfully!',
+          type: 'success'
+        })
+        // Remove from local state
+        setAddedEmails(prev => prev.filter(email => email.id !== id))
+        // Remove auth status if it exists
+        const emailToDelete = addedEmails.find(email => email.id === id)
+        if (emailToDelete) {
+          setAuthStatusMap(prev => {
+            const newStatus = { ...prev }
+            delete newStatus[emailToDelete.email]
+            return newStatus
+          })
+        }
+        setShowDeleteConfirm(null)
+      } else {
+        setMessage({
+          text: 'Failed to delete email',
+          type: 'error'
+        })
+      }
+    } catch (error) {
+      setMessage({
+        text: error instanceof Error ? error.message : 'Failed to delete email',
+        type: 'error'
+      })
+    } finally {
+      setDeletingEmailId(null)
+    }
+  }
+
+  // Email duplication prevention
+  const validateEmailExists = async (email: string) => {
+    if (email && isValidEmail(email)) {
+      setCheckingEmail(true)
+      const emailInAddedEmails = addedEmails.some(entry => entry.email.toLowerCase() === email.toLowerCase().trim())
+      if (emailInAddedEmails) {
+        setEmailExistsError('This email already exists in AddedEmail table')
+      } else {
+        try {
+          const exists = await checkEmailExistsInAddedEmail(email)
+          if (exists) {
+            setEmailExistsError('This email already exists in AddedEmail table')
+          } else {
+            setEmailExistsError(null)
+          }
+        } catch (error) {
+          console.error('Error checking email existence:', error)
+        }
+      }
+      setCheckingEmail(false)
+    } else {
+      setEmailExistsError(null)
+    }
+  }
+
+  const handleAddEmailChange = (field: keyof typeof addEmailForm, value: string) => {
+    if (field === 'email') {
+      // Apply email trimming immediately
+      const trimmedValue = value.trim()
+      
+      setAddEmailForm(prev => ({ ...prev, email: trimmedValue }))
+      
+      // Clear existing timeout
+      if (emailCheckTimeout) {
+        clearTimeout(emailCheckTimeout)
+      }
+      
+      // Set debounced validation
+      const timeout = setTimeout(() => {
+        validateEmailExists(trimmedValue)
+      }, 500)
+      setEmailCheckTimeout(timeout)
+    } else {
+      setAddEmailForm(prev => ({ ...prev, [field]: value }))
     }
   }
 
@@ -1028,20 +1241,32 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Email</h3>
             <form onSubmit={handleAddEmail} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label htmlFor="add_email" className="block text-sm font-medium text-gray-700 mb-2">
                     Email Address <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    id="add_email"
-                    type="email"
-                    value={addEmailForm.email}
-                    onChange={(e) => setAddEmailForm(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="user@example.com"
-                    required
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  <div className="relative">
+                    <input
+                      id="add_email"
+                      type="email"
+                      value={addEmailForm.email}
+                      onChange={(e) => handleAddEmailChange('email', e.target.value)}
+                      placeholder="user@example.com"
+                      required
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        emailExistsError ? 'border-orange-500 bg-orange-50' : 'border-gray-300'
+                      } ${checkingEmail ? 'pr-10' : ''}`}
+                    />
+                    {checkingEmail && (
+                      <div className="absolute right-3 inset-y-0 flex items-center">
+                        <Loader className="w-4 h-4 animate-spin text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                  {emailExistsError && (
+                    <p className="mt-1 text-sm text-orange-600">{emailExistsError}</p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="add_first_name" className="block text-sm font-medium text-gray-700 mb-2">
@@ -1051,7 +1276,7 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
                     id="add_first_name"
                     type="text"
                     value={addEmailForm.first_name}
-                    onChange={(e) => setAddEmailForm(prev => ({ ...prev, first_name: e.target.value }))}
+                    onChange={(e) => handleAddEmailChange('first_name', e.target.value)}
                     placeholder="John"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -1064,15 +1289,69 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
                     id="add_last_name"
                     type="text"
                     value={addEmailForm.last_name}
-                    onChange={(e) => setAddEmailForm(prev => ({ ...prev, last_name: e.target.value }))}
+                    onChange={(e) => handleAddEmailChange('last_name', e.target.value)}
                     placeholder="Doe"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="add_phone_number" className="block text-sm font-medium text-gray-700 mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    id="add_phone_number"
+                    type="tel"
+                    value={addEmailForm.phone_number}
+                    onChange={(e) => handleAddEmailChange('phone_number', e.target.value)}
+                    placeholder="+27621234567"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="add_school" className="block text-sm font-medium text-gray-700 mb-2">
+                    School
+                  </label>
+                  <input
+                    id="add_school"
+                    type="text"
+                    value={addEmailForm.school}
+                    onChange={(e) => handleAddEmailChange('school', e.target.value)}
+                    placeholder="Sandton Secondary School"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="add_grade" className="block text-sm font-medium text-gray-700 mb-2">
+                    Grade
+                  </label>
+                  <input
+                    id="add_grade"
+                    type="text"
+                    value={addEmailForm.grade}
+                    onChange={(e) => handleAddEmailChange('grade', e.target.value)}
+                    placeholder="Grade 11"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="add_date_of_birth" className="block text-sm font-medium text-gray-700 mb-2">
+                    Date of Birth
+                  </label>
+                  <input
+                    id="add_date_of_birth"
+                    type="date"
+                    value={addEmailForm.date_of_birth}
+                    onChange={(e) => handleAddEmailChange('date_of_birth', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
               </div>
               <button
                 type="submit"
-                disabled={addingEmail || !addEmailForm.email}
+                disabled={addingEmail || !addEmailForm.email || emailExistsError !== null || checkingEmail}
                 className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {addingEmail ? (
@@ -1206,6 +1485,17 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
                             : emailEntry.email}
                         </h3>
                         <p className="text-sm text-gray-600">{emailEntry.email}</p>
+                        <div className="flex items-center space-x-4 text-xs text-gray-500 mt-1">
+                          {emailEntry.phone_number && (
+                            <span>📞 {emailEntry.phone_number}</span>
+                          )}
+                          {emailEntry.school && (
+                            <span>🏫 {emailEntry.school}</span>
+                          )}
+                          {emailEntry.grade && (
+                            <span>🎓 Grade {emailEntry.grade}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-4">
@@ -1229,8 +1519,42 @@ const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'
                           <span className="text-xs">Authenticate</span>
                         </button>
                       )}
+                      {/** Delete functionality */}
+                      <button
+                        onClick={() => setShowDeleteConfirm(emailEntry.id === showDeleteConfirm ? null : emailEntry.id)}
+                        disabled={deletingEmailId === emailEntry.id}
+                        className="flex items-center space-x- background-transparent border border-red-300 p-1 rounded hover:bg-red-50 disabled:bg-gray-100"
+                        title="Delete email"
+                      >
+                        {deletingEmailId === emailEntry.id ? (
+                          <Loader className="w-3 h-3 animate-spin text-gray-400" />
+                        ) : (
+                          <Trash2 className="w-3 h-3 text-red-400 hover:text-red-600" />
+                        )}
+                      </button>
                     </div>
                   </div>
+                  {showDeleteConfirm === emailEntry.id && (
+                    <div className="mt-3 flex items-center justify-end space-x-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                      <span className="text-sm text-red-800">Permanently delete this email?</span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleDeleteEmail(emailEntry.id)}
+                          disabled={deletingEmailId === emailEntry.id}
+                          className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:bg-gray-400"
+                        >
+                          {deletingEmailId === emailEntry.id ? 'Deleting...' : 'Yes, Delete'}
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(null)}
+                          className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
+                          disabled={deletingEmailId === emailEntry.id}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
