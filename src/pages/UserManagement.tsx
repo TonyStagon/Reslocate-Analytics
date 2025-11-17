@@ -16,7 +16,8 @@ import {
   bulkCreateAuthUsers,
   deleteEmailFromAddedEmail,
   checkEmailExistsInAddedEmail,
-  addEmailWithAuthentication
+  addEmailWithAuthentication,
+  addEmailToProfileTable
 } from '../lib/userService'
 import type { Profile } from '../types/database'
 import { AddedEmail } from '../lib/userService'
