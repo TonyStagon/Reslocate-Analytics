@@ -43,12 +43,15 @@ export function generatePassword(length: number = 12): string {
 
 // Create user with email confirmation bypass
 export async function createUserWithEmail(
-  email: string, 
-  password: string, 
+  email: string,
+  password: string,
   profileData?: {
     first_name?: string
     last_name?: string
     phone_number?: string
+    school?: string
+    grade?: string
+    date_of_birth?: string
     role?: 'Learner' | 'Parent' | 'Tutor' | 'Other'
   }
 ): Promise<CreateUserResponse> {
@@ -96,6 +99,9 @@ export async function createUserWithEmail(
       first_name: profileData?.first_name || '',
       last_name: profileData?.last_name || '',
       phone_number: profileData?.phone_number || '',
+      school: profileData?.school || '',
+      grade: profileData?.grade || '',
+      date_of_birth: profileData?.date_of_birth || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }

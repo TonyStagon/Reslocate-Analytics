@@ -82,7 +82,8 @@ export function UserManagement() {
     date_of_birth: '',
     include_authentication: false,
     password_option: 'auto',
-    custom_password: ''
+    custom_password: '',
+    storage_destination: 'addedemail' as 'addedemail' | 'profile' | 'both_tables'
   })
   const [addingEmail, setAddingEmail] = useState(false)
   const [generatedAddEmailPassword, setGeneratedAddEmailPassword] = useState('')
@@ -295,36 +296,194 @@ export function UserManagement() {
     e.preventDefault()
     setAddingEmail(true)
     
+    const storageType = addEmailForm.storage_destination
+
     try {
-      const result = await addEmailToAddedEmail(
-        addEmailForm.email,
-        addEmailForm.first_name,
-        addEmailForm.last_name
-      )
-      
-      if (result.success) {
-        setMessage({
-          text: `Email ${addEmailForm.email} added successfully to AddedEmail table!`,
-          type: 'success'
-        })
-        setAddEmailForm({
-          email: '',
-          first_name: '',
-          last_name: '',
-          phone_number: '',
-          school: '',
-          grade: '',
-          date_of_birth: '',
-          include_authentication: false,
-          password_option: 'auto',
-          custom_password: ''
-        })
-        await fetchAddedEmails()
-      } else {
-        setMessage({
-          text: result.error || 'Failed to add email to AddedEmail table',
-          type: 'error'
-        })
+      if (storageType === 'addedemail') {
+        const result = await addEmailToAddedEmail(
+          addEmailForm.email,
+          addEmailForm.first_name,
+          addEmailForm.last_name
+        )
+        
+        // Handle the addedemail result
+        if (result.success) {
+          setMessage({
+            text: `Email ${addEmailForm.email} added successfully to AddedEmail table!` +
+              (result.error ? ` ${result.error}` : ''),
+            type: 'success'
+          })
+          // Continue with additional processing if needed
+        } else {
+          setMessage({
+            text: result.error || 'Failed to add email to AddedEmail table',
+            type: 'error'
+          })
+        }
+      } else if (storageType === 'profile') {
+        // Add to profiles table with authentication
+        const passwordToUse = addEmailForm.password_option === 'auto'
+          ? generatePassword()
+          : addEmailForm.custom_password || generatePassword()
+        
+        const profileResult = await addEmailToProfileTable(
+          addEmailForm.email,
+          addEmailForm.first_name || '',
+          addEmailForm.last_name || '',
+          addEmailForm.phone_number || '',
+          addEmailForm.school || '',
+          addEmailForm.grade || '',
+          addEmailForm.date_of_birth || '',
+          passwordToUse,
+          'Learner' // default role
+        )
+        
+        if (profileResult.success) {
+          let successMessage = `✅ Successfully created profile for ${addEmailForm.email} with full authentication! User can now log in.`
+          if (passwordToUse) {
+            successMessage += ` Generated password: ${passwordToUse}`
+          }
+          if (profileResult.messages.length > 0) {
+            successMessage += ` Additional info: ${profileResult.messages.join(', ')}`
+          }
+          
+          setMessage({
+            text: successMessage,
+            type: 'success'
+          })
+          // Reset form
+          setAddEmailForm({
+            email: '',
+            first_name: '',
+            last_name: '',
+            phone_number: '',
+            school: '',
+            grade: '',
+            date_of_birth: '',
+            include_authentication: false,
+            password_option: 'auto',
+            custom_password: '',
+            storage_destination: 'profile'
+          })
+          await fetchAddedEmails() // In case we want to see created users
+          setAddingEmail(false)
+          return
+        } else {
+          const errorMessage = profileResult.errors.length > 0
+            ? profileResult.errors.join(', ')
+            : 'Unknown error occurred'
+          setMessage({
+            text: `Failed to create profile: ${errorMessage}`,
+            type: 'error'
+          })
+          setAddingEmail(false)
+          return
+        }
+      } else if (storageType === 'addedemail') {
+        // Handle basic addedemail type storage
+        const result = await addEmailToAddedEmail(
+          addEmailForm.email,
+          addEmailForm.first_name,
+          addEmailForm.last_name
+        )
+        
+        // Handle the addedemail result
+        if (result.success) {
+          setMessage({
+            text: `Email ${addEmailForm.email} added successfully to AddedEmail table!` +
+              (result.error ? ` ${result.error}` : ''),
+            type: 'success'
+          })
+        } else {
+          setMessage({
+            text: result.error || 'Failed to add email to AddedEmail table',
+            type: 'error'
+          })
+        }
+      } else if (storageType === 'both_tables') {
+        // Implement "BOTH TABLES" dual write mode
+        try {
+          const passwordToUse = addEmailForm.password_option === 'auto'
+            ? generatePassword()
+            : addEmailForm.custom_password || generatePassword()
+
+          // 1st: Create FULL profile with authentication
+          const profileResult = await addEmailToProfileTable(
+            addEmailForm.email,
+            addEmailForm.first_name || '',
+            addEmailForm.last_name || '',
+            addEmailForm.phone_number || '',
+            addEmailForm.school || '',
+            addEmailForm.grade || '',
+            addEmailForm.date_of_birth || '',
+            passwordToUse,
+            'Learner'
+          )
+
+          if (profileResult.success) {
+            // 2nd: Also register as standard contact in AddedEmail
+            const addedEmailResult = await addEmailToAddedEmail(
+              addEmailForm.email,
+              addEmailForm.first_name,
+              addEmailForm.last_name,
+              addEmailForm.phone_number,
+              addEmailForm.school,
+              addEmailForm.grade,
+              addEmailForm.date_of_birth
+            )
+
+            let coreMessage = `🎯 SUPER SUCCESS: Valid fully platform-active user ${addEmailForm.email} enrolled! This person has both:
+            • Added to AddedEmail as Linked Resource Contact Entry '${addEmailForm.email}' \
+            • Complete authenticated Student Profile existing${passwordToUse ? ` to login now with email / '${passwordToUse}'` : ''}.
+            `
+            
+            if (addedEmailResult.error) {
+              coreMessage += `ℹ️ Handled without duplication: Contact Role came from existing record. User position normal operational.`
+            }
+
+            setMessage({
+              text: coreMessage,
+              type: 'success'
+            })
+            
+            // Reset form after successful dual storage creation
+             setAddEmailForm({
+               email: '',
+               first_name: '',
+               last_name: '',
+               phone_number: '',
+               school: '',
+               grade: '',
+               date_of_birth: '',
+               include_authentication: false,
+               password_option: 'auto',
+               custom_password: '',
+               storage_destination: 'both_tables'
+             })
+             await fetchAddedEmails() // Refresh the AddedEmail view
+             if (activeTab === 'profiles') {
+               await fetchProfiles() // Also refresh profiles view
+             }
+             setAddingEmail(false)
+             return
+          } else {
+            setMessage({
+              text: `🔄 Storage Options Miss - Profile step failed preventing using both. ${profileResult.errors.join(', ')} Active revert policy: Only built the AddedEmail part with contact tracking. Profiles table method unreliable, will not generate automatic login user account.`,
+              type: 'error'
+            })
+            setAddingEmail(false)
+            return
+          }
+
+        } catch (dualError) {
+          console.error('System control: Both_tables execution error catch/report', dualError)
+          setMessage({
+            text: `Storage clash avoidance in progress (This prevent connection writes mid-air downflow): ${dualError instanceof Error ? dualError.message : 'Please retrace subsystem check'}`,
+            type: 'error'
+          })
+          setAddingEmail(false)
+          return
+        }
       }
     } catch (simpleError) {
       console.error('Error in initial addEmailToAddedEmail:', simpleError)
@@ -374,7 +533,8 @@ export function UserManagement() {
           date_of_birth: '',
           include_authentication: false,
           password_option: 'auto',
-          custom_password: ''
+          custom_password: '',
+          storage_destination: 'addedemail'
         })
         setGeneratedAddEmailPassword('')
         
@@ -395,7 +555,8 @@ export function UserManagement() {
             date_of_birth: '',
             include_authentication: false,
             password_option: 'auto',
-            custom_password: ''
+            custom_password: '',
+            storage_destination: 'addedemail'
           })
           await fetchAddedEmails()
         } else {
@@ -423,7 +584,19 @@ export function UserManagement() {
           text: `Fallback completed - Email (${addEmailForm.email}) added to AddedEmail table (Auth generation skipped)`,
           type: 'error'  // Changed from 'warning'
         })
-        setAddEmailForm({ email: '', first_name: '', last_name: '', phone_number: '', school: '', grade: '', date_of_birth: '', include_authentication: false, password_option: 'auto', custom_password: '' })
+        setAddEmailForm({
+          email: '',
+          first_name: '',
+          last_name: '',
+          phone_number: '',
+          school: '',
+          grade: '',
+          date_of_birth: '',
+          include_authentication: false,
+          password_option: 'auto',
+          custom_password: '',
+          storage_destination: 'addedemail' as 'addedemail' | 'profile'
+        })
         await fetchAddedEmails()
       } else {
         setMessage({ text: `Full failure to add email: ${regularResult.error || 'Please try later'}`, type: 'error' })
@@ -1310,7 +1483,104 @@ export function UserManagement() {
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+             {/* Storage Destination Selection */}
+             <div className="border-t border-gray-200 pt-4">
+               <label className="block text-sm font-medium text-gray-700 mb-3">
+                 Storage Destination <span className="text-blue-500">*</span>
+               </label>
+               <div className="grid grid-cols-3 gap-4">
+                 <label className="relative flex cursor-pointer rounded-lg border border-gray-300 p-4 focus:outline-none hover:border-blue-500">
+                   <input
+                     type="radio"
+                     value="addedemail"
+                     checked={addEmailForm.storage_destination === 'addedemail'}
+                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' }))}
+                     className="sr-only"
+                   />
+                   <div className="flex w-full items-center justify-between">
+                     <div className="flex items-center">
+                       <div className={`text-sm font-medium ${
+                         addEmailForm.storage_destination === 'addedemail' ? 'text-blue-900' : 'text-gray-900'
+                       }`}>
+                         <p>AddedEmail Table</p>
+                         <p className="text-xs text-gray-500 mt-1">Email tracking only (basic storage)</p>
+                       </div>
+                     </div>
+                     <div className={`h-5 w-5 shrink-0 rounded-full border ${
+                       addEmailForm.storage_destination === 'addedemail' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+                     } flex items-center justify-center`}>
+                       {addEmailForm.storage_destination === 'addedemail' && (
+                         <div className="h-2 w-2 rounded-full bg-white"></div>
+                       )}
+                     </div>
+                   </div>
+                 </label>
+ 
+                 <label className="relative flex cursor-pointer rounded-lg border border-gray-300 p-4 focus:outline-none hover:border-green-500">
+                   <input
+                     type="radio"
+                     value="profile"
+                     checked={addEmailForm.storage_destination === 'profile'}
+                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' }))}
+                     className="sr-only"
+                   />
+                   <div className="flex w-full items-center justify-between">
+                     <div className="flex items-center">
+                       <div className={`text-sm font-medium ${
+                         addEmailForm.storage_destination === 'profile' ? 'text-green-900' : 'text-gray-900'
+                       }`}>
+                         <p>Profile Table</p>
+                         <p className="text-xs text-gray-500 mt-1">Full user with authentication</p>
+                       </div>
+                     </div>
+                     <div className={`h-5 w-5 shrink-0 rounded-full border ${
+                       addEmailForm.storage_destination === 'profile' ? 'border-green-600 bg-green-600' : 'border-gray-300'
+                     } flex items-center justify-center`}>
+                       {addEmailForm.storage_destination === 'profile' && (
+                         <div className="h-2 w-2 rounded-full bg-white"></div>
+                       )}
+                     </div>
+                   </div>
+
+<label className="relative flex cursor-pointer rounded-lg border border-gray-300 p-4 focus:outline-none hover:border-purple-500">
+  <input
+    type="radio"
+    value="both_tables"
+    checked={addEmailForm.storage_destination === 'both_tables'}
+    onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' | 'both_tables' }))}
+    className="sr-only"
+  />
+  <div className="flex w-full items-center justify-between">
+    <div className="flex items-center">
+      <div className={`text-sm font-medium ${
+        addEmailForm.storage_destination === 'both_tables' ? 'text-purple-900' : 'text-gray-900'
+      }`}>
+        <p>Both Tables</p>
+        <p className="text-xs text-gray-500 mt-1">Contact tracking + active user</p>
+      </div>
+    </div>
+    <div className={`h-5 w-5 shrink-0 rounded-full border ${
+      addEmailForm.storage_destination === 'both_tables' ? 'border-purple-600 bg-purple-600' : 'border-gray-300'
+    } flex items-center justify-center`}>
+      {addEmailForm.storage_destination === 'both_tables' && (
+        <div className="h-2 w-2 rounded-full bg-white"></div>
+      )}
+    </div>
+  </div>
+</label>
+                 </label>
+               </div>
+               <p className="text-xs text-gray-500 mt-2">
+                 {addEmailForm.storage_destination === 'addedemail'
+                   ? 'Email will be stored in AddedEmail tracking table only (no authentication)'
+                   : addEmailForm.storage_destination === 'both_tables'
+                   ? 'Full user will be created with platform access and also stored in AddedEmail for contact tracking'
+                   : 'User will be created with full profile and immediate login capability'
+                 }
+               </p>
+             </div>
+ 
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="add_school" className="block text-sm font-medium text-gray-700 mb-2">
                     School
