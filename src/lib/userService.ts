@@ -828,126 +828,121 @@ export async function addEmailToProfileTable(
   messages: string[];
 }> {
   try {
-    console.log('📝 Adding email to profiles table with authentication:', email)
+    console.log('📝 Creating profile with authentication for:', email)
     
     const errors: string[] = []
     const messages: string[] = []
-    const usePassword: string | undefined = password
+    const usePassword: string = password || generatePassword(12)
 
     // Step 1: Create authentication user
-    let authUser: any = null
-    let auth_created = false
-    let passwordDisplay = ''
-
-    try {
-      const generatedPassword = usePassword || generatePassword(12)
-      const authResult = await createUserWithEmail(
-        email,
-        generatedPassword,
-        {
-          first_name: firstName,
-          last_name: lastName,
-          phone_number: phone_number,
-          role: role
-        }
-      )
-
-      if (authResult.user) {
-        authUser = authResult.user
-        auth_created = true
-        passwordDisplay = generatedPassword + (usePassword ? ' (Custom)' : ' (Generated)')
-        messages.push('✅ Authentication user created successfully')
-        messages.push(`📋 Login details: ${email} / ${passwordDisplay}`)
-        
-        // Now update profile with additional fields if provided
-        if (authResult.user.id && (school || grade || date_of_birth)) {
-          try {
-            const updateData: any = {
-              updated_at: new Date().toISOString()
-            }
-            if (school) updateData.school = school
-            if (grade) updateData.grade = grade
-            if (date_of_birth) updateData.date_of_birth = date_of_birth
-            
-            const { error: profileUpdateError } = await supabaseAdmin
-              .from('profiles')
-              .update(updateData)
-              .eq('id', authResult.user.id)
-              
-            if (!profileUpdateError) {
-              messages.push('✅ Profile with complete data updated successfully')
-            }
-          } catch (profileUpdateError: any) {
-            console.warn('⚠️ Profile field update warning:', profileUpdateError)
-          }
-        }
-      } else {
-        errors.push('Failed to create authentication user: ' + (authResult.error?.message || 'Unknown error'))
-        console.log('ℹ️ Attempting to proceed with profiles only due to existing user...')
-        
-        // Check if user already exists - we'll need to handle this case
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          // Use existing user if available
-          authUser = user
-        } else {
-          throw new Error('Could not create or find existing user')
-        }
+    console.log('Step 1: Creating auth user...')
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: usePassword,
+      email_confirm: true,
+      user_metadata: { 
+        created_by_admin: true,
+        first_name: firstName,
+        last_name: lastName
       }
-    } catch (authError: any) {
-      const errorMessage = authError.message?.toLowerCase() || ''
-      if (errorMessage.includes('already exists') || errorMessage.includes('already registered')) {
-        messages.push('ℹ️ User authentication already existed')
-        // Query to find existing user
-        const { data: existingUser } = await supabase.auth.admin.getUserById(authUser?.id || email)
-        if (existingUser) {
-          authUser = existingUser
-        }
-      } else {
-        errors.push('Authentication error: ' + authError.message)
+    })
+
+    if (authError) {
+      console.error('❌ Auth creation failed:', authError)
+      
+      // Check if user already exists
+      if (authError.message?.includes('already') || authError.message?.includes('exists')) {
+        errors.push('User with this email already exists in authentication system')
+        return { success: false, errors, messages }
       }
+      
+      errors.push(`Authentication creation failed: ${authError.message}`)
+      return { success: false, errors, messages }
     }
 
-    // Step 2: Add/update profile using the regular methods
-    let profile: any = null
-    if (errors.length === 0 && (authUser || messages.includes('already exists'))) {
+    if (!authData.user) {
+      errors.push('No user data returned from authentication creation')
+      return { success: false, errors, messages }
+    }
+
+    console.log('✅ Auth user created:', authData.user.id)
+    messages.push('✅ Authentication account created')
+
+    // Step 2: Create profile entry with CORRECT field mapping
+    console.log('Step 2: Creating profile entry...')
+    const profileData = {
+      id: authData.user.id,           // Primary key (UUID from auth)
+      user_id: authData.user.id,      // User reference (same as id)
+      email: email.toLowerCase(),
+      role: role,
+      first_name: firstName || null,
+      last_name: lastName || null,
+      phone_number: phone_number || null,
+      school: school || null,
+      grade: grade || null,
+      date_of_birth: date_of_birth || null,
+      is_verified: true,
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    console.log('Profile data to insert:', {
+      id: profileData.id,
+      email: profileData.email,
+      role: profileData.role,
+      has_first_name: !!profileData.first_name,
+      has_last_name: !!profileData.last_name
+    })
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .insert(profileData)
+      .select()
+      .single()
+
+    if (profileError) {
+      console.error('❌ Profile creation failed:', profileError)
+      console.error('Profile error details:', {
+        code: profileError.code,
+        message: profileError.message,
+        details: profileError.details,
+        hint: profileError.hint
+      })
+      
+      // Try to clean up the auth user if profile creation fails
       try {
-        // Use the existing createUserWithEmail logic automatically handles profiles
-        // But let's verify it exists
-        const { data: existingProfile, error: profileError } = await supabaseAdmin
-          .from('profiles')
-          .select('*')
-          .eq('id', authUser?.id || email)
-          .maybeSingle()
-
-        if (existingProfile) {
-          profile = existingProfile
-          messages.push('✅ Existing profile verified/found')
-        } else if (profileError) {
-          console.warn('⚠️ Profile lookup warning:', profileError)
-          messages.push('⚠️ Profile auto-creation may have failed but authentication successful')
-        } else {
-          messages.push('⚠️ Complete profile created but retrieval timed out')
-        }
-      } catch (profileError: any) {
-        console.warn('❌ Profile lookup non-fatal error:', profileError)
-        messages.push('⚠️ Profile creation/verification encountered non-fatal error')
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+        console.log('⚠️ Rolled back auth user due to profile creation failure')
+      } catch (cleanupError) {
+        console.error('Failed to cleanup auth user:', cleanupError)
       }
+      
+      errors.push(`Profile creation failed: ${profileError.message}`)
+      if (profileError.hint) {
+        errors.push(`Hint: ${profileError.hint}`)
+      }
+      return { success: false, errors, messages }
     }
+
+    console.log('✅ Profile created successfully:', profile.id)
+    messages.push('✅ Full profile created with all details')
+    messages.push(`📋 Login credentials: ${email} / ${usePassword}${password ? ' (Custom)' : ' (Generated)'}`)
 
     return {
-      success: errors.length === 0,
+      success: true,
       profile,
-      authData: auth_created || authUser ? {
-        user: authUser,
-        auth_created,
-        passwordDisplay
-      } : undefined,
-      errors,
+      authData: {
+        user: authData.user,
+        auth_created: true,
+        passwordDisplay: usePassword + (password ? ' (Custom)' : ' (Generated)')
+      },
+      errors: [],
       messages
     }
+
   } catch (error: any) {
-    console.error('❌ Overall error in addEmailToProfileTable:', error)
+    console.error('❌ Unexpected error in addEmailToProfileTable:', error)
     return {
       success: false,
       errors: [error.message || 'Unknown system error occurred'],
