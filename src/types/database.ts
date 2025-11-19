@@ -4,7 +4,6 @@
 
 export interface Profile {
   id: string;
-  user_id: string;
   updated_at?: string;
   created_at?: string;
   first_name?: string;
