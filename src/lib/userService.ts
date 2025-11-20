@@ -782,7 +782,7 @@ export async function addEmailWithAuthentication(
   }
 }
 
-// Check if email already exists in AddedEmail table before adding
+// Check if emails already exists in AddedEmail table before adding
 export async function checkEmailExistsInAddedEmail(email: string): Promise<boolean> {
   try {
     console.log('📝 Checking if email exists in AddedEmail:', email)
