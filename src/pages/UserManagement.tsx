@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2, FileText, Upload, Download, ShieldCheck, User } from 'lucide-react'
+import { Mail, Lock, Copy, AlertCircle, CheckCircle, RefreshCw, Users, Loader, UserPlus, Edit, Save, X, Plus, Trash2, FileText, Upload, Download, ShieldCheck, User, Send, Link } from 'lucide-react'
 import {
   createUserWithEmail,
   generatePassword,
@@ -19,6 +19,14 @@ import {
   addEmailWithAuthentication,
   addEmailToProfileTable
 } from '../lib/userService'
+import {
+  sendMagicLinkToProfile,
+  sendMagicLinkToEmail,
+  bulkSendMagicLinks,
+  checkMagicLinkExists,
+  getMagicLinkUsers,
+  type MagicLinkUser
+} from '../lib/magicLinkService'
 import type { Profile } from '../types/database'
 import { AddedEmail } from '../lib/userService'
 
@@ -37,13 +45,14 @@ interface CreateUserFormData {
 }
 
 export function UserManagement() {
-  const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails'>('create')
+const [activeTab, setActiveTab] = useState<'create' | 'profiles' | 'addedEmails' | 'sendMagicLinks'>('create')
   
   // Email Duplicate Prevention States
   const [emailCheckTimeout, setEmailCheckTimeout] = useState<NodeJS.Timeout | null>(null)
   const [emailExistsError, setEmailExistsError] = useState<string | null>(null)
   const [checkingEmail, setCheckingEmail] = useState(false)
   
+
   // Create User Form States
   const [userFormData, setUserFormData] = useState<CreateUserFormData>({
     email: '',
@@ -91,6 +100,13 @@ export function UserManagement() {
   const [deletingEmailId, setDeletingEmailId] = useState<number | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null)
   
+  // Magic Link States
+  const [selectedProfiles, setSelectedProfiles] = useState<string[]>([])
+  const [sendingMagicLinks, setSendingMagicLinks] = useState(false)
+  const [magicLinkStatus, setMagicLinkStatus] = useState<{[profileId: string]: {loading: boolean; success?: boolean; error?: string; link?: string; simulated?: boolean}}>({})
+  const [copiedMagicLinks, setCopiedMagicLinks] = useState<{[profileId: string]: boolean}>({})
+  const [magicLinkUsers, setMagicLinkUsers] = useState<MagicLinkUser[]>([])
+  
   // CSV Import States
   const [csvImportFile, setCsvImportFile] = useState<File | null>(null)
   const [importingCSV, setImportingCSV] = useState(false)
@@ -102,7 +118,17 @@ export function UserManagement() {
     errors: Array<{ row: number; error: string }>
   } | null>(null)
   
-  const [touched, setTouched] = useState({ 
+  // Send Magic Links to Arbitrary Emails States
+  const [sendMagicLinksEmails, setSendMagicLinksEmails] = useState<string>('')
+  const [sendingMagicLinksToEmails, setSendingMagicLinksToEmails] = useState(false)
+  const [sendMagicLinksResults, setSendMagicLinksResults] = useState<{
+    success: boolean;
+    sent: number;
+    failed: number;
+    errors: Array<{ email: string; error: string }>
+  } | null>(null)
+  
+  const [touched, setTouched] = useState({
     email: false, 
     customPassword: false,
     first_name: false,
@@ -178,6 +204,13 @@ export function UserManagement() {
     if (success) {
       setCopiedPassword(true)
       setTimeout(() => setCopiedPassword(false), 2000)
+    }
+  }
+  const handleCopyMagicLink = async (profileId: string, link: string) => {
+    const success = await copyToClipboard(link)
+    if (success) {
+      setCopiedMagicLinks(prev => ({ ...prev, [profileId]: true }))
+      setTimeout(() => setCopiedMagicLinks(prev => ({ ...prev, [profileId]: false })), 2000)
     }
   }
 
@@ -378,27 +411,6 @@ export function UserManagement() {
           })
           setAddingEmail(false)
           return
-        }
-      } else if (storageType === 'addedemail') {
-        // Handle basic addedemail type storage
-        const result = await addEmailToAddedEmail(
-          addEmailForm.email,
-          addEmailForm.first_name,
-          addEmailForm.last_name
-        )
-        
-        // Handle the addedemail result
-        if (result.success) {
-          setMessage({
-            text: `Email ${addEmailForm.email} added successfully to AddedEmail table!` +
-              (result.error ? ` ${result.error}` : ''),
-            type: 'success'
-          })
-        } else {
-          setMessage({
-            text: result.error || 'Failed to add email to AddedEmail table',
-            type: 'error'
-          })
         }
       } else if (storageType === 'both_tables') {
         // Implement "BOTH TABLES" dual write mode
@@ -856,6 +868,247 @@ export function UserManagement() {
     return addedEmails.filter(emailEntry => authStatusMap[emailEntry.email] !== true).length
   }
 
+  // Magic Link Functions
+  const toggleProfileSelection = (profileId: string) => {
+    setSelectedProfiles(prev =>
+      prev.includes(profileId)
+        ? prev.filter(id => id !== profileId)
+        : [...prev, profileId]
+    )
+  }
+
+  const selectAllProfiles = () => {
+    if (selectedProfiles.length === profiles.length) {
+      setSelectedProfiles([])
+    } else {
+      setSelectedProfiles(profiles.map(p => p.id))
+    }
+  }
+
+  const handleSendMagicLinkToProfile = async (profile: Profile) => {
+    setMagicLinkStatus(prev => ({
+      ...prev,
+      [profile.id]: { loading: true }
+    }))
+
+    try {
+      const result = await sendMagicLinkToProfile({
+        email: profile.email || '',
+        first_name: profile.first_name,
+        last_name: profile.last_name
+      })
+
+      setMagicLinkStatus(prev => ({
+        ...prev,
+        [profile.id]: {
+          loading: false,
+          success: result.success,
+          error: result.error,
+          link: result.magicLink,
+          simulated: result.simulated
+        }
+      }))
+
+      if (result.success) {
+        setMessage({
+          text: `Magic link sent successfully to ${profile.email}`,
+          type: 'success'
+        })
+      } else {
+        setMessage({
+          text: `Failed to send magic link to ${profile.email}: ${result.error}`,
+          type: 'error'
+        })
+      }
+    } catch (error: any) {
+      setMagicLinkStatus(prev => ({
+        ...prev,
+        [profile.id]: {
+          loading: false,
+          success: false,
+          error: error.message
+        }
+      }))
+      setMessage({
+        text: `Error sending magic link to ${profile.email}: ${error.message}`,
+        type: 'error'
+      })
+    }
+  }
+
+  const handleBulkSendMagicLinks = async () => {
+    if (selectedProfiles.length === 0) {
+      setMessage({
+        text: 'Please select at least one profile to send magic links',
+        type: 'error'
+      })
+      return
+    }
+
+    setSendingMagicLinks(true)
+    setMessage(null)
+
+    const selectedProfileData = profiles.filter(p => selectedProfiles.includes(p.id))
+
+    try {
+      const result = await bulkSendMagicLinks(
+        selectedProfileData.map(p => ({
+          email: p.email || '',
+          first_name: p.first_name,
+          last_name: p.last_name
+        }))
+      )
+
+      if (result.success) {
+        setMessage({
+          text: `Successfully sent ${result.sent} magic links${result.failed > 0 ? ` (${result.failed} failed)` : ''}`,
+          type: 'success'
+        })
+      } else {
+        setMessage({
+          text: `Failed to send magic links: ${result.failed} failed out of ${result.sent + result.failed}`,
+          type: 'error'
+        })
+      }
+
+      // Refresh magic link users
+      await fetchMagicLinkUsers()
+      
+      // Clear selection after sending
+      setSelectedProfiles([])
+    } catch (error: any) {
+      setMessage({
+        text: `Error sending magic links: ${error.message}`,
+        type: 'error'
+      })
+    } finally {
+      setSendingMagicLinks(false)
+    }
+  }
+
+  const fetchMagicLinkUsers = async () => {
+    try {
+      const result = await getMagicLinkUsers()
+      if (result.success && result.users) {
+        setMagicLinkUsers(result.users)
+      }
+    } catch (error) {
+      console.error('Error fetching magic link users:', error)
+    }
+  }
+
+  const checkProfileMagicLinkStatus = async (profile: Profile) => {
+    if (!profile.email) return false
+    
+    try {
+      const result = await checkMagicLinkExists(profile.email)
+      return result.exists
+    } catch (error) {
+      console.error('Error checking magic link status:', error)
+      return false
+    }
+  }
+  // Send magic links to arbitrary emails
+  const handleSendMagicLinksToEmails = async () => {
+    if (!sendMagicLinksEmails.trim()) {
+      setMessage({
+        text: 'Please enter at least one email address',
+        type: 'error'
+      })
+      return
+    }
+
+    setSendingMagicLinksToEmails(true)
+    setSendMagicLinksResults(null)
+
+    const lines = sendMagicLinksEmails.trim().split('\n')
+    const emails: Array<{email: string; firstName?: string; lastName?: string}> = []
+    const errors: Array<{email: string; error: string}> = []
+
+    // Parse each line
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+
+      // Support format: email (optional first name, last name)
+      // Simple parsing: if contains spaces, treat first token as email? Actually we can allow "email FirstName LastName"
+      const parts = trimmed.split(/\s+/)
+      const email = parts[0]
+      if (!isValidEmail(email)) {
+        errors.push({ email: trimmed, error: 'Invalid email format' })
+        continue
+      }
+      const firstName = parts[1] || undefined
+      const lastName = parts[2] || undefined
+      emails.push({ email, firstName, lastName })
+    }
+
+    if (emails.length === 0) {
+      setMessage({
+        text: 'No valid email addresses found',
+        type: 'error'
+      })
+      setSendingMagicLinksToEmails(false)
+      return
+    }
+
+    // Use bulkSendMagicLinks which expects array of {email, first_name?, last_name?}
+    const payload = emails.map(e => ({
+      email: e.email,
+      first_name: e.firstName,
+      last_name: e.lastName
+    }))
+
+    try {
+      const result = await bulkSendMagicLinks(payload)
+      // Map results to errors
+      const errorResults = result.results.filter(r => !r.success).map(r => ({
+        email: r.email,
+        error: r.error || 'Unknown error'
+      }))
+      setSendMagicLinksResults({
+        success: result.success,
+        sent: result.sent,
+        failed: result.failed,
+        errors: errorResults
+      })
+
+      if (result.success) {
+        setMessage({
+          text: `Successfully sent ${result.sent} magic links${result.failed > 0 ? ` (${result.failed} failed)` : ''}`,
+          type: 'success'
+        })
+        // Clear textarea on success
+        setSendMagicLinksEmails('')
+      } else {
+        setMessage({
+          text: `Failed to send magic links: ${result.failed} failed out of ${result.sent + result.failed}`,
+          type: 'error'
+        })
+      }
+    } catch (error: any) {
+      setSendMagicLinksResults({
+        success: false,
+        sent: 0,
+        failed: emails.length,
+        errors: [{ email: 'batch', error: error.message }]
+      })
+      setMessage({
+        text: `Error sending magic links: ${error.message}`,
+        type: 'error'
+      })
+    } finally {
+      setSendingMagicLinksToEmails(false)
+    }
+  }
+
+  // Initialize magic link users when profiles tab is active
+  useEffect(() => {
+    if (activeTab === 'profiles' && profiles.length > 0) {
+      fetchMagicLinkUsers()
+    }
+  }, [activeTab, profiles.length])
+
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
@@ -913,6 +1166,19 @@ export function UserManagement() {
               <div className="flex items-center space-x-2">
                 <Mail className="w-4 h-4" />
                 <span>Added Emails</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('sendMagicLinks')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'sendMagicLinks'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Send className="w-4 h-4" />
+                <span>Send Magic Links</span>
               </div>
             </button>
           </nav>
@@ -1200,9 +1466,41 @@ export function UserManagement() {
           </div>
         </div>
       ) : activeTab === 'profiles' ? (
-        /* Profile Management Tab */
+        /* Profile Management Tab with Magic Link Functionality */
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Profile Management</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Profile Management</h2>
+            
+            {/* Bulk Magic Link Actions */}
+            {selectedProfiles.length > 0 && (
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-600">
+                  {selectedProfiles.length} profile{selectedProfiles.length > 1 ? 's' : ''} selected
+                </span>
+                <button
+                  onClick={handleBulkSendMagicLinks}
+                  disabled={sendingMagicLinks}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {sendingMagicLinks ? (
+                    <Loader className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  <span>
+                    {sendingMagicLinks ? 'Sending...' : `Send Magic Links (${selectedProfiles.length})`}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setSelectedProfiles([])}
+                  className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Clear Selection</span>
+                </button>
+              </div>
+            )}
+          </div>
           
           {loadingProfiles ? (
             <div className="flex items-center justify-center py-8">
@@ -1216,8 +1514,29 @@ export function UserManagement() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Select All Checkbox */}
+              <div className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg">
+                <input
+                  type="checkbox"
+                  checked={selectedProfiles.length === profiles.length && profiles.length > 0}
+                  onChange={selectAllProfiles}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Select All ({profiles.length} profiles)
+                </span>
+              </div>
+
               {profiles.map((profile) => (
                 <div key={profile.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedProfiles.includes(profile.id)}
+                      onChange={() => toggleProfileSelection(profile.id)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
                   {editingProfile === profile.id ? (
                     /* Edit Mode */
                     <div className="space-y-4">
@@ -1303,7 +1622,7 @@ export function UserManagement() {
                       </div>
                     </div>
                   ) : (
-                    /* View Mode */
+                    /* View Mode with Magic Link Button */
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center space-x-3">
@@ -1321,14 +1640,80 @@ export function UserManagement() {
                             <p className="text-sm text-gray-600">{profile.email}</p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleEditProfile(profile.id)}
-                          className="flex items-center space-x-1 px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
-                        >
-                          <Edit className="w-4 h-4" />
-                          <span>Edit</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {/* Magic Link Button */}
+                          <button
+                            onClick={() => handleSendMagicLinkToProfile(profile)}
+                            disabled={magicLinkStatus[profile.id]?.loading}
+                            className="flex items-center space-x-1 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          >
+                            {magicLinkStatus[profile.id]?.loading ? (
+                              <Loader className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                            <span>
+                              {magicLinkStatus[profile.id]?.loading ? 'Sending...' : 'Send Magic Link'}
+                            </span>
+                          </button>
+                          
+                          <button
+                            onClick={() => handleEditProfile(profile.id)}
+                            className="flex items-center space-x-1 px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
+                          >
+                            <Edit className="w-4 h-4" />
+                            <span>Edit</span>
+                          </button>
+                        </div>
                       </div>
+                      
+                      {/* Magic Link Status */}
+                      {magicLinkStatus[profile.id] && (
+                        <div className={`mt-3 p-3 rounded-lg text-sm ${
+                          magicLinkStatus[profile.id].success
+                            ? 'bg-green-50 border border-green-200 text-green-800'
+                            : magicLinkStatus[profile.id].error
+                            ? 'bg-red-50 border border-red-200 text-red-800'
+                            : ''
+                        }`}>
+                          {magicLinkStatus[profile.id].success ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center space-x-2">
+                                <CheckCircle className="w-4 h-4" />
+                                <span>Magic link sent successfully!</span>
+                              </div>
+                              {magicLinkStatus[profile.id].simulated && (
+                                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                                  <p className="text-sm text-yellow-800">
+                                    <span className="font-medium">Note:</span> Email sending is currently simulated.
+                                    The magic link has been generated but not emailed. Please copy and share it manually.
+                                  </p>
+                                </div>
+                              )}
+                              {magicLinkStatus[profile.id].link && (
+                                <div className="mt-2 flex items-center space-x-2">
+                                  <Link className="w-4 h-4 text-gray-500" />
+                                  <div className="flex-1 bg-gray-100 border border-gray-300 rounded px-3 py-2 font-mono text-xs truncate">
+                                    {magicLinkStatus[profile.id].link}
+                                  </div>
+                                  <button
+                                    onClick={() => handleCopyMagicLink(profile.id, magicLinkStatus[profile.id].link!)}
+                                    className="flex items-center space-x-1 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    <span>{copiedMagicLinks[profile.id] ? 'Copied!' : 'Copy'}</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : magicLinkStatus[profile.id].error ? (
+                            <div className="flex items-center space-x-2">
+                              <AlertCircle className="w-4 h-4" />
+                              <span>Failed to send magic link: {magicLinkStatus[profile.id].error}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
@@ -1352,10 +1737,123 @@ export function UserManagement() {
                       </div>
                     </div>
                   )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+        </div>
+      ) : activeTab === 'sendMagicLinks' ? (
+        /* Send Magic Links Tab */
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Send Magic Links to Emails</h2>
+            <div className="flex items-center space-x-2 text-green-600">
+              <Send className="w-5 h-5" />
+              <span>Send magic links to any email address</span>
+            </div>
+          </div>
+
+          {/* Message Display */}
+          {message && (
+            <div className={`mb-6 p-4 rounded-lg flex items-start gap-3 ${
+              message.type === 'success'
+                ? 'bg-green-50 border border-green-200 text-green-800'
+                : 'bg-red-50 border border-red-200 text-red-800'
+            }`}>
+              {message.type === 'success' ? (
+                <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              )}
+              <p className="text-sm">{message.text}</p>
+            </div>
+          )}
+
+          {/* Input Section */}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Enter Email Addresses</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Enter one email per line. You can optionally include first and last names after the email, separated by spaces.
+              Example: <code className="bg-gray-100 px-1 rounded">john@example.com John Doe</code>
+            </p>
+            <textarea
+              value={sendMagicLinksEmails}
+              onChange={(e) => setSendMagicLinksEmails(e.target.value)}
+              placeholder="john@example.com&#10;jane@example.com Jane Smith&#10;bob@example.com"
+              rows={8}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+            />
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-500">
+                {sendMagicLinksEmails.trim().split('\n').filter(line => line.trim()).length} email(s) entered
+              </div>
+              <button
+                onClick={handleSendMagicLinksToEmails}
+                disabled={sendingMagicLinksToEmails || !sendMagicLinksEmails.trim()}
+                className="flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {sendingMagicLinksToEmails ? (
+                  <Loader className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                <span>{sendingMagicLinksToEmails ? 'Sending...' : 'Send Magic Links'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Results Display */}
+          {sendMagicLinksResults && (
+            <div className={`border rounded-lg p-6 ${
+              sendMagicLinksResults.success
+                ? 'bg-green-50 border-green-200'
+                : 'bg-yellow-50 border-yellow-200'
+            }`}>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Send Results</h3>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <span className="text-gray-700">Successfully sent: <strong>{sendMagicLinksResults.sent}</strong> magic links</span>
+                </div>
+                {sendMagicLinksResults.failed > 0 && (
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    <span className="text-gray-700">Failed: <strong>{sendMagicLinksResults.failed}</strong> emails</span>
+                  </div>
+                )}
+                {sendMagicLinksResults.errors.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Errors:</h4>
+                    <ul className="space-y-1 max-h-48 overflow-y-auto">
+                      {sendMagicLinksResults.errors.map((err, idx) => (
+                        <li key={idx} className="text-sm text-red-700 bg-red-50 border border-red-100 rounded px-3 py-2">
+                          <span className="font-medium">{err.email}</span>: {err.error}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Info Box */}
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-gray-900">How Magic Links Work</h4>
+                <ul className="text-sm text-gray-600 mt-2 space-y-1">
+                  <li>• Each email will receive a unique magic link that can be used to log in without a password.</li>
+                  <li>• If the email already has a magic link, it will be updated (old link becomes invalid).</li>
+                  <li>• Magic links expire after 24 hours.</li>
+                  <li>• If email sending is disabled (simulation mode), you can copy the generated link and share manually.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         /* Added Emails Tab */
@@ -1494,7 +1992,7 @@ export function UserManagement() {
                      type="radio"
                      value="addedemail"
                      checked={addEmailForm.storage_destination === 'addedemail'}
-                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' }))}
+                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' | 'both_tables' }))}
                      className="sr-only"
                    />
                    <div className="flex w-full items-center justify-between">
@@ -1515,13 +2013,13 @@ export function UserManagement() {
                      </div>
                    </div>
                  </label>
- 
+
                  <label className="relative flex cursor-pointer rounded-lg border border-gray-300 p-4 focus:outline-none hover:border-green-500">
                    <input
                      type="radio"
                      value="profile"
                      checked={addEmailForm.storage_destination === 'profile'}
-                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' }))}
+                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' | 'both_tables' }))}
                      className="sr-only"
                    />
                    <div className="flex w-full items-center justify-between">
@@ -1541,33 +2039,33 @@ export function UserManagement() {
                        )}
                      </div>
                    </div>
+                 </label>
 
-<label className="relative flex cursor-pointer rounded-lg border border-gray-300 p-4 focus:outline-none hover:border-purple-500">
-  <input
-    type="radio"
-    value="both_tables"
-    checked={addEmailForm.storage_destination === 'both_tables'}
-    onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' | 'both_tables' }))}
-    className="sr-only"
-  />
-  <div className="flex w-full items-center justify-between">
-    <div className="flex items-center">
-      <div className={`text-sm font-medium ${
-        addEmailForm.storage_destination === 'both_tables' ? 'text-purple-900' : 'text-gray-900'
-      }`}>
-        <p>Both Tables</p>
-        <p className="text-xs text-gray-500 mt-1">Contact tracking + active user</p>
-      </div>
-    </div>
-    <div className={`h-5 w-5 shrink-0 rounded-full border ${
-      addEmailForm.storage_destination === 'both_tables' ? 'border-purple-600 bg-purple-600' : 'border-gray-300'
-    } flex items-center justify-center`}>
-      {addEmailForm.storage_destination === 'both_tables' && (
-        <div className="h-2 w-2 rounded-full bg-white"></div>
-      )}
-    </div>
-  </div>
-</label>
+                 <label className="relative flex cursor-pointer rounded-lg border border-gray-300 p-4 focus:outline-none hover:border-purple-500">
+                   <input
+                     type="radio"
+                     value="both_tables"
+                     checked={addEmailForm.storage_destination === 'both_tables'}
+                     onChange={(e) => setAddEmailForm(prev => ({ ...prev, storage_destination: e.target.value as 'addedemail' | 'profile' | 'both_tables' }))}
+                     className="sr-only"
+                   />
+                   <div className="flex w-full items-center justify-between">
+                     <div className="flex items-center">
+                       <div className={`text-sm font-medium ${
+                         addEmailForm.storage_destination === 'both_tables' ? 'text-purple-900' : 'text-gray-900'
+                       }`}>
+                         <p>Both Tables</p>
+                         <p className="text-xs text-gray-500 mt-1">Contact tracking + active user</p>
+                       </div>
+                     </div>
+                     <div className={`h-5 w-5 shrink-0 rounded-full border ${
+                       addEmailForm.storage_destination === 'both_tables' ? 'border-purple-600 bg-purple-600' : 'border-gray-300'
+                     } flex items-center justify-center`}>
+                       {addEmailForm.storage_destination === 'both_tables' && (
+                         <div className="h-2 w-2 rounded-full bg-white"></div>
+                       )}
+                     </div>
+                   </div>
                  </label>
                </div>
                <p className="text-xs text-gray-500 mt-2">
@@ -1579,7 +2077,7 @@ export function UserManagement() {
                  }
                </p>
              </div>
- 
+
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="add_school" className="block text-sm font-medium text-gray-700 mb-2">

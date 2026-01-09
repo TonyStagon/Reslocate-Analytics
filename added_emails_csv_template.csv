@@ -1,6 +1,6 @@
-id,email,first_name,last_name,created_by,created_at,updated_at
-1,johns.doe@gmail.com,John,Doe,system-user,2024-11-12T10:00:00Z,2024-11-12T10:00:00Z
-2,jane.smith@gmail.com,Jane,Smith,admin-user,2024-11-12T10:30:00Z,2024-11-12T10:30:00Z
-3,mike.wilson@gmail.com,Mike,Wilson,system-user,2024-11-12T11:00:00Z,2024-11-12T11:00:00Z
-4,sarah.jones@gmail.com,Sarah,Jones,admin-user,2024-11-12T11:30:00Z,2024-11-12T11:30:00Z
-5,david.brown@gmail.com,David,Brown,system-user,2024-11-12T12:00:00Z,2024-11-12T12:00:00Z
+id,email,first_name,last_name,phone_number,school,grade,date_of_birth,created_by,created_at,updated_at
+1,michael.brown@gmail.com,Michael,Brown,+27651234589,St John's College,Grade 11,2005-08-22,system-user,2024-11-20T11:15:00Z,2024-11-20T11:15:00Z
+2,emma.davis@gmail.com,Emma,Davis,+27821234590,Roedean School,Grade 12,2004-03-14,admin-user,2024-11-20T12:45:00Z,2024-11-20T12:45:00Z
+3,david.smith@gmail.com,David,Smith,+27731234591,St Mary's DSG,Grade 10,2006-11-08,system-user,2024-11-20T14:20:00Z,2024-11-20T14:20:00Z
+4,lisa.johnson@gmail.com,Lisa,Johnson,+27841234592,Bishops Diocesan College,Grade 11,2005-02-28,admin-user,2024-11-20T15:30:00Z,2024-11-20T15:30:00Z
+5,james.wilson@gmail.com,James,Wilson,+27661234593,Rondebosch Boys' High,Grade 12,2004-07-19,system-user,2024-11-20T16:45:00Z,2024-11-20T16:45:00Z

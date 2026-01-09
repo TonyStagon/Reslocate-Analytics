@@ -111,7 +111,7 @@ export function FeatureAdoptionBackup() {
         <>
           <div className="bg-green-50 p-4 rounded-lg mb-4">
             <p className="text-green-800">
-              ✅ ACCURATE: The database has total of <span className="font-bold text-large">{stats?.total_button_clicks}</span> cliecked buttons ever by Users .
+              ✅ ACCURATE: The database has total of <span className="font-bold text-lg">{stats?.total_button_clicks}</span> clicked buttons ever by Users.
               They determined Current CTC by page_name.
             </p>
             <p className="text-green-600 text-sm mt-2">
@@ -122,18 +122,19 @@ export function FeatureAdoptionBackup() {
           </div>
           
           <div className="">
-            <SearchableTable
-              />
+            <SearchableTable columns={columns} data={data} />
           </div>
-
         </>
       ) : (
         <div className="text-center text-gray-500">
-          <p>Survey either countain zeros or systems incomplete.</p>
-          <button className="m-4 bg">{stats?.total_button_clicks || 0} counting failure found!.</button>
+          <p>Survey either contains zeros or systems incomplete.</p>
+          <button className="m-4 bg-blue-500 text-white px-4 py-2 rounded">
+            {stats?.total_button_clicks || 0} counting failure found!
+          </button>
         </div>
-      
-   
+      )}
+    </div>
+  )
 }
 
 export default FeatureAdoptionBackup

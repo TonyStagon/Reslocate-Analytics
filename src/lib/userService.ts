@@ -750,7 +750,7 @@ export async function addEmailWithAuthentication(
         const errorSafeMessage = authError.message?.toLowerCase() || ''
         console.error('❌ Error during authentication creation:', authError)
         if (errorSafeMessage.includes('already exists') || errorSafeMessage.includes('already registered')) {
-          messages.push('⚠️ User authentication already existed (no changes made)')
+          messages.push('⚠️User authentication already existed (no changes made)')
           authResult.passwordDisplay = ''
         } else {
           errors.push('Final error for auth creation: ' + authError.message)
