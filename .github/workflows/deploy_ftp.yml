@@ -1,0 +1,68 @@
+# Deploy repository (or build folder) to your cPanel path using lftp.
+# Make sure you add the repository secrets: FTP_HOST, FTP_USERNAME, FTP_PASSWORD, FTP_TARGET
+name: FTP Deploy
+
+on:
+  push:
+    branches:
+      - main            # change this if you deploy from a different branch
+  workflow_dispatch:   # allow manual runs from Actions UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build (optional)
+        run: |
+          if [ -f package.json ]; then
+            npm ci --silent
+            if jq -e '.scripts.build' package.json >/dev/null 2>&1; then
+              npm run build
+            fi
+          fi
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Deploy to FTP using lftp mirror
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_TARGET: ${{ secrets.FTP_TARGET }}
+          FTP_USE_SSL: ${{ secrets.FTP_USE_SSL }}
+        run: |
+          # Choose local directory: prefer build/dist if present
+          local_dir="./"
+          if [ -d "./build" ]; then local_dir="./build"; fi
+          if [ -d "./dist" ]; then local_dir="./dist"; fi
+
+          echo "Local directory: $local_dir"
+          echo "Remote target: ${FTP_TARGET:-/home/reslocate/app.reslocate.net/web}"
+
+          # Compose host (include port if provided)
+          if [ -n "$FTP_PORT" ]; then
+            HOST="${FTP_HOST}:$FTP_PORT"
+          else
+            HOST="$FTP_HOST"
+          fi
+
+          # Choose SSL setting: "yes" to enable FTPS/TLS, anything else disables TLS
+          if [ "${FTP_USE_SSL,,}" = "yes" ]; then
+            SSL_CMD="set ftp:ssl-allow yes;"
+          else
+            SSL_CMD="set ftp:ssl-allow no;"
+          fi
+
+          # Upload: mirror -R (local->remote), --delete to sync remote to local
+          lftp -c "$SSL_CMD \
+            set net:max-retries 2; \
+            set net:reconnect-interval-base 5; \
+            set ftp:passive-mode on; \
+            open -u $FTP_USERNAME,$FTP_PASSWORD $HOST; \
+            lcd $local_dir; \
+            mirror -R --v   erbose --delete --parallel=2 . ${FTP_TARGET:-/home/reslocate/app.reslocate.net/web}"
